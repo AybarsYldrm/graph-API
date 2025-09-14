@@ -3,6 +3,6 @@
 basicConstraints=CA:FALSE
 keyUsage=digitalSignature, nonRepudiation
 extendedKeyUsage=clientAuth, emailProtection
-subjectAltName=email:aybarsyildirim.game@gmail.com
+subjectAltName=email:
 1.2.3.4.5.6.7.1=ASN1:UTF8String:user
 1.2.3.4.5.6.7.2=ASN1:UTF8String:1feffe6f-d9fa-4b37-b999-9e46c81c29b1
