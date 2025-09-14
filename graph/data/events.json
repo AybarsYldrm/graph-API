@@ -1,0 +1,47 @@
+[
+  {
+    "id": "36fa743e-1ffd-4b4b-8078-2d363e4e1bcd",
+    "type": "event",
+    "schemaVersion": 1,
+    "createdAt": "2025-08-31T09:35:04.464Z",
+    "updatedAt": "2025-09-03T20:13:27.806Z",
+    "title": "Abuzer",
+    "startsAt": "2025-08-30T18:17:43.700Z",
+    "endsAt": "2025-08-30T18:17:43.700Z",
+    "ownerId": "1feffe6f-d9fa-4b37-b999-9e46c81c29b1",
+    "location": "sivas",
+    "tags": [
+      "graph api"
+    ]
+  },
+  {
+    "id": "09b42824-36c1-45ef-b04c-823d7f49e923",
+    "type": "event",
+    "schemaVersion": 1,
+    "createdAt": "2025-08-31T09:36:34.403Z",
+    "updatedAt": "2025-09-03T20:13:39.551Z",
+    "title": "AYbars",
+    "startsAt": "2025-08-30T18:17:43.700Z",
+    "endsAt": "2025-08-30T18:17:43.700Z",
+    "ownerId": "1feffe6f-d9fa-4b37-b999-9e46c81c29b1",
+    "location": "Ankara",
+    "tags": [
+      "graph api"
+    ]
+  },
+  {
+    "id": "a79d6e18-95f0-4cd5-84da-7e173fd10af1",
+    "type": "event",
+    "schemaVersion": 1,
+    "createdAt": "2025-09-03T20:03:50.892Z",
+    "updatedAt": "2025-09-03T20:03:50.892Z",
+    "title": "wdawdaw",
+    "startsAt": "2025-12-09T10:10",
+    "endsAt": "2025-12-19T10:59",
+    "ownerId": "ff310352-1b43-4683-b102-aed20222d7dc",
+    "location": "sivas",
+    "tags": [
+      "Fulya"
+    ]
+  }
+]

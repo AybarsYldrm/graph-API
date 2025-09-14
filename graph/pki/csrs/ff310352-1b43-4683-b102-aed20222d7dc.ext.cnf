@@ -1,0 +1,8 @@
+
+[ usr_cert ]
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature, nonRepudiation
+extendedKeyUsage=clientAuth, emailProtection
+subjectAltName=email:aybarsyildirim.game@gmail.com
+1.2.3.4.5.6.7.1=ASN1:UTF8String:admin
+1.2.3.4.5.6.7.2=ASN1:UTF8String:ff310352-1b43-4683-b102-aed20222d7dc
