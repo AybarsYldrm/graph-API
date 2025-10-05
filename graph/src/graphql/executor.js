@@ -1,15 +1,20 @@
 'use strict';
 
 // AST value -> JS
-function astToJS(v) {
+function astToJS(v, vars = {}) {
   switch (v.kind) {
     case 'StringValue': case 'IntValue': case 'FloatValue':
     case 'BooleanValue': return v.value;
     case 'NullValue': return null;
     case 'EnumValue': return v.value;
-    case 'ListValue': return v.values.map(astToJS);
+    case 'ListValue': return v.values.map(val => astToJS(val, vars));
     case 'ObjectValue': {
-      const o = {}; for (const f of v.fields) o[f.name] = astToJS(f.value); return o;
+      const o = {}; for (const f of v.fields) o[f.name] = astToJS(f.value, vars); return o;
+    }
+    case 'Variable': {
+      const name = v.name;
+      if (Object.prototype.hasOwnProperty.call(vars, name)) return vars[name];
+      throw new Error(`Variable "$${name}" is not defined.`);
     }
   }
   return null;
@@ -43,16 +48,27 @@ function checkPermissions(fieldMeta, args, ctx) {
 }
 
 /**
- * execute({ schema, document, contextValue })
+ * execute({ schema, document, contextValue, variableValues })
  * - schema: your existing schema object where fields may be either:
  *   - a function/object { resolve: fn, ...meta } or
  *   - a direct resolver function (old style)
  * - contextValue: make sure you set contextValue.user = req.user in your /graphql handler
  */
-async function execute({ schema, document, contextValue = {} }) {
+async function execute({ schema, document, contextValue = {}, variableValues = {} }) {
   const op = document.definitions[0];
   const root = op.operation === 'mutation' ? schema.Mutation : schema.Query;
   if (!root) return { data: null, errors: [{ message: `Missing root type` }] };
+
+  const coercedVars = { ...(variableValues || {}) };
+  if (Array.isArray(op.variableDefinitions)) {
+    for (const def of op.variableDefinitions) {
+      const varName = def.variable?.name;
+      if (varName == null) continue;
+      if (!Object.prototype.hasOwnProperty.call(coercedVars, varName)) {
+        if (def.defaultValue != null) coercedVars[varName] = astToJS(def.defaultValue, coercedVars);
+      }
+    }
+  }
 
   const data = {};
   const errors = [];
@@ -82,7 +98,7 @@ async function execute({ schema, document, contextValue = {} }) {
 
       // collect arguments
       const args = {};
-      for (const a of sel.arguments || []) args[a.name] = astToJS(a.value);
+      for (const a of sel.arguments || []) args[a.name] = astToJS(a.value, coercedVars);
 
       // Permission check BEFORE resolver runs
       try {
@@ -98,10 +114,10 @@ async function execute({ schema, document, contextValue = {} }) {
         if (Array.isArray(result)) {
           data[key] = [];
           for (const item of result) {
-            data[key].push(await resolveSelectionSet(schema, item, sel.selectionSet, contextValue));
+            data[key].push(await resolveSelectionSet(schema, item, sel.selectionSet, contextValue, coercedVars));
           }
         } else if (isObj(result) || result == null) {
-          data[key] = result == null ? null : await resolveSelectionSet(schema, result, sel.selectionSet, contextValue);
+          data[key] = result == null ? null : await resolveSelectionSet(schema, result, sel.selectionSet, contextValue, coercedVars);
         } else {
           throw new Error(`Subselection requires object/list result for "${sel.name}"`);
         }
@@ -117,7 +133,7 @@ async function execute({ schema, document, contextValue = {} }) {
   return errors.length ? { data, errors } : { data };
 }
 
-async function resolveSelectionSet(schema, parent, selectionSet, ctx) {
+async function resolveSelectionSet(schema, parent, selectionSet, ctx, vars) {
   const out = {};
   for (const sel of selectionSet.selections) {
     const key = sel.alias || sel.name;
@@ -129,7 +145,7 @@ async function resolveSelectionSet(schema, parent, selectionSet, ctx) {
 
     // collect args
     const args = {};
-    for (const a of sel.arguments || []) args[a.name] = (a.value ? (a.value.value ?? null) : null);
+    for (const a of sel.arguments || []) args[a.name] = astToJS(a.value, vars);
 
     // If the resolver is an object with meta, handle permission checks similarly
     let meta = null;
@@ -157,10 +173,10 @@ async function resolveSelectionSet(schema, parent, selectionSet, ctx) {
     if (sel.selectionSet) {
       if (Array.isArray(res)) {
         const arr = [];
-        for (const item of res) arr.push(await resolveSelectionSet(schema, item, sel.selectionSet, ctx));
+        for (const item of res) arr.push(await resolveSelectionSet(schema, item, sel.selectionSet, ctx, vars));
         out[key] = arr;
       } else if (res && typeof res === 'object') {
-        out[key] = await resolveSelectionSet(schema, res, sel.selectionSet, ctx);
+        out[key] = await resolveSelectionSet(schema, res, sel.selectionSet, ctx, vars);
       } else out[key] = res ?? null;
     } else out[key] = res;
   }

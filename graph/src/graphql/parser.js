@@ -18,8 +18,47 @@ class Parser {
   parse() {
     let op = 'query', name=null;
     if (this.check('NAME','query') || this.check('NAME','mutation')) { op=this.la.value; this.eat('NAME'); if (this.check('NAME')) name=this.eat('NAME').value; }
+    let variableDefinitions = [];
+    if (this.check('PUNCT','(')) variableDefinitions = this.parseVariableDefinitions();
     const selectionSet = this.parseSelectionSet();
-    return { kind:'Document', definitions:[{ kind:'OperationDefinition', operation:op, name, selectionSet }] };
+    return { kind:'Document', definitions:[{ kind:'OperationDefinition', operation:op, name, variableDefinitions, selectionSet }] };
+  }
+  parseVariableDefinitions(){
+    this.eat('PUNCT','(');
+    const defs=[];
+    while(!this.check('PUNCT',')')){
+      defs.push(this.parseVariableDefinition());
+      if (this.check('PUNCT',',')) this.eat('PUNCT',',');
+    }
+    this.eat('PUNCT',')');
+    return defs;
+  }
+  parseVariableDefinition(){
+    const variable=this.parseVariable();
+    this.eat('PUNCT',':');
+    const type=this.parseType();
+    let defaultValue=null;
+    if (this.check('PUNCT','=')) { this.eat('PUNCT','='); defaultValue=this.parseValue(); }
+    return { kind:'VariableDefinition', variable, type, defaultValue };
+  }
+  parseVariable(){
+    this.eat('PUNCT','$');
+    const name=this.eat('NAME').value;
+    return { kind:'Variable', name };
+  }
+  parseType(){
+    let type;
+    if (this.check('PUNCT','[')){
+      this.eat('PUNCT','[');
+      const inner=this.parseType();
+      this.eat('PUNCT',']');
+      type={ kind:'ListType', type:inner };
+    } else {
+      const name=this.eat('NAME').value;
+      type={ kind:'NamedType', name };
+    }
+    if (this.check('PUNCT','!')){ this.eat('PUNCT','!'); type={ kind:'NonNullType', type }; }
+    return type;
   }
   parseSelectionSet(){
     this.eat('PUNCT','{');
@@ -64,6 +103,7 @@ class Parser {
         return { kind:'EnumValue', value:v };
       }
       case 'PUNCT':
+        if (t.value==='$') return this.parseVariable();
         if (t.value==='[') return this.parseList();
         if (t.value==='{') return this.parseObject();
     }
