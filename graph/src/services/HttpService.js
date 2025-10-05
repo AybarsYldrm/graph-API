@@ -59,6 +59,7 @@ _buildCorsHeaders(req, extra = {}) {
   headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS';
   headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Csrf-Token';
   headers['Access-Control-Allow-Credentials'] = 'true';
+  headers['Vary'] = headers['Vary'] ? `${headers['Vary']}, Origin` : 'Origin';
   return headers;
 }
 
@@ -126,7 +127,8 @@ sendJson(res, statusCode, payload, extraHeaders = {}, req = null) {
 sendGraph(res, statusCode, raw, extraHeaders = {}, req = null) {
   if (res.headersSent) return;
   const cors = this._buildCorsHeaders(req, extraHeaders);
-  const headers = Object.assign({ 'Content-Type':'application/json; charset=utf-8' }, cors);
+  const headers = Object.assign({ 'Content-Type':'application/graphql-response+json; charset=utf-8' }, cors);
+  headers['Vary'] = headers['Vary'] ? `${headers['Vary']}, Accept` : 'Accept';
 
   try {
     const existing = (res.getHeader && res.getHeader('Set-Cookie')) || null;
@@ -180,6 +182,160 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
       const key = `${route.method}:${route.path}`;
       if (!this.customRateStores.has(key)) this.customRateStores.set(key, new Map());
     }
+  }
+
+  registerGraphQL(pathPattern, config = {}) {
+    const { schema, parse, execute, contextFactory, allowGetMutations = false } = config;
+    if (!pathPattern) throw new Error('GraphQL pathPattern gerekli.');
+    if (!schema) throw new Error('GraphQL schema tanımlı olmalıdır.');
+    if (typeof parse !== 'function') throw new Error('GraphQL parse fonksiyonu gerekli.');
+    if (typeof execute !== 'function') throw new Error('GraphQL execute fonksiyonu gerekli.');
+
+    const baseOptions = Object.assign({ graph: true }, config.routeOptions || {});
+
+    const ensureUserOnRequest = async (req) => {
+      if (req.user || !this.authService) return;
+      try {
+        const authHeader = req.headers['authorization'] || '';
+        let token = null;
+        if (authHeader.startsWith('Bearer ')) token = authHeader.slice(7);
+        if (!token) token = this._getCookie(req, 'auth_token');
+        if (!token) return;
+        const verified = await this.authService.verifyJWT(token);
+        if (verified) req.user = verified.user || verified.payload || verified;
+      } catch (err) {
+        // ignore token errors, resolver level yetkisi hataya düşecek
+      }
+    };
+
+    const getOperationDefinition = (document, operationName) => {
+      for (const def of document.definitions || []) {
+        if (def.kind !== 'OperationDefinition') continue;
+        if (!operationName) return def;
+        if (def.name && def.name.value === operationName) return def;
+      }
+      return null;
+    };
+
+    const parseVariables = (input) => {
+      if (input == null) return {};
+      if (typeof input === 'string' && input.trim() === '') return {};
+      if (typeof input === 'string') {
+        try { return JSON.parse(input); } catch (err) { throw new Error('variables alanı geçerli JSON olmalıdır.'); }
+      }
+      if (typeof input === 'object') return input;
+      throw new Error('variables alanı desteklenmeyen formatta.');
+    };
+
+    const handler = async (req, res) => {
+      const accept = req.headers.accept || '';
+      if (accept && accept !== '*/*' && !/application\/graphql-response\+json/i.test(accept) && !/application\/json/i.test(accept)) {
+        const headers = this._buildCorsHeaders(req, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET, POST, OPTIONS' });
+        headers['Vary'] = headers['Vary'] ? `${headers['Vary']}, Accept` : 'Accept';
+        res.writeHead(406, headers);
+        res.end('Not Acceptable');
+        return;
+      }
+
+      await ensureUserOnRequest(req);
+
+      let query = null;
+      let variables = {};
+      let operationName = undefined;
+
+      if (req.method === 'GET') {
+        const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+        query = parsedUrl.searchParams.get('query');
+        const varsRaw = parsedUrl.searchParams.get('variables');
+        operationName = parsedUrl.searchParams.get('operationName') || undefined;
+        if (!query) {
+          return this.sendGraph(res, 400, { data: null, errors: [{ message: '"query" parametresi zorunludur.' }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+        }
+        try {
+          variables = parseVariables(varsRaw);
+        } catch (err) {
+          return this.sendGraph(res, 400, { data: null, errors: [{ message: err.message }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+        }
+      } else if (req.method === 'POST') {
+        let body = req.body;
+        if (typeof body === 'string') {
+          try { body = JSON.parse(body); } catch (err) {
+            return this.sendGraph(res, 400, { data: null, errors: [{ message: 'Gönderilen gövde geçerli JSON değil.' }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+          }
+        }
+        body = body || {};
+        query = body.query || null;
+        operationName = body.operationName || undefined;
+        try {
+          variables = parseVariables(body.variables);
+        } catch (err) {
+          return this.sendGraph(res, 400, { data: null, errors: [{ message: err.message }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+        }
+        if (!query && typeof req.rawBody === 'string' && req.rawBody.trim()) {
+          query = req.rawBody.trim();
+        }
+        if (!query) {
+          return this.sendGraph(res, 400, { data: null, errors: [{ message: 'GraphQL sorgusu gerekli.' }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+        }
+      } else {
+        return this.sendGraph(res, 405, { data: null, errors: [{ message: 'Yalnızca GET veya POST desteklenir.' }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+      }
+
+      let document;
+      try {
+        document = parse(query);
+      } catch (err) {
+        return this.sendGraph(res, 400, { data: null, errors: [{ message: err.message }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+      }
+
+      const opDef = getOperationDefinition(document, operationName);
+      if (!opDef) {
+        return this.sendGraph(res, 400, { data: null, errors: [{ message: 'Belirtilen operasyon bulunamadı.' }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+      }
+
+      if (req.method === 'GET' && opDef.operation !== 'query' && !allowGetMutations) {
+        return this.sendGraph(res, 405, { data: null, errors: [{ message: 'GET isteğiyle yalnızca query operasyonu çağrılabilir.' }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+      }
+
+      let contextValue = {};
+      if (typeof contextFactory === 'function') {
+        const maybe = await contextFactory({ req, res, user: req.user, authService: this.authService, httpService: this });
+        if (maybe && typeof maybe === 'object') contextValue = maybe;
+      }
+      if (!contextValue || typeof contextValue !== 'object') contextValue = {};
+      contextValue.req = req;
+      contextValue.res = res;
+      contextValue.http = this;
+      contextValue.authService = this.authService;
+      contextValue.user = req.user;
+
+      let executionResult;
+      try {
+        executionResult = await execute({ schema, document, variableValues: variables, contextValue, operationName });
+      } catch (err) {
+        return this.sendGraph(res, 500, { data: null, errors: [{ message: err.message }] }, {}, req);
+      }
+
+      if (!executionResult || typeof executionResult !== 'object') {
+        return this.sendGraph(res, 500, { data: null, errors: [{ message: 'GraphQL yürütmesi beklenmeyen sonuç döndürdü.' }] }, {}, req);
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(executionResult, 'data')) {
+        executionResult = Object.assign({ data: null }, executionResult);
+      }
+
+      return this.sendGraph(res, 200, executionResult, {}, req);
+    };
+
+    // CORS preflight / OPTIONS
+    this.addRoute('OPTIONS', pathPattern, (req, res) => {
+      const headers = this._buildCorsHeaders(req, { Allow: 'GET, POST, OPTIONS' });
+      res.writeHead(204, headers);
+      res.end();
+    }, baseOptions);
+
+    this.addRoute('GET', pathPattern, handler, baseOptions);
+    this.addRoute('POST', pathPattern, handler, baseOptions);
   }
 
   findRoute(method, pathname) {
