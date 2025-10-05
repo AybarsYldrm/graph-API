@@ -255,6 +255,7 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
     let buffer = Buffer.alloc(0);
     const fields = {};
     const files = [];
+    let finished = false;
 
     const maxBytes = routeOptions?.upload?.maxBytes || this.uploadDefaultLimit;
     const maxKBps = routeOptions?.upload?.maxKBps || this.uploadDefaultMaxKBps || null;
@@ -287,7 +288,14 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
       state = { headers:null, name:null, origFilename:null, filename:null, contentType:null, stream:null, tempPath:null };
     };
 
+    const triggerCallback = () => {
+      if (finished) return;
+      finished = true;
+      try { cb({ fields, files }); } catch(e) { console.error(e); }
+    };
+
     req.on('data', chunk => {
+      if (finished) return;
       totalBytes += chunk.length;
       bytesSinceLast += chunk.length;
       if (totalBytes > maxBytes) { this.sendJson(res, 413, { success: false, message: "Payload too large" }); req.destroy(); return; }
@@ -313,7 +321,7 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
         }
 
         buffer = buffer.slice(idx + boundary.length);
-        if (buffer.slice(0,2).toString() === '--') { endCurrentPart(); try{ cb({fields,files}); }catch(e){console.error(e);} return; }
+        if (buffer.slice(0,2).toString() === '--') { endCurrentPart(); triggerCallback(); return; }
         if (buffer.slice(0,2).toString() === '\r\n') buffer = buffer.slice(2);
 
         const headerEndIdx = buffer.indexOf('\r\n\r\n');
@@ -363,12 +371,13 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
     });
 
     req.on('end', () => {
+      if (finished) return;
       // finalize: if still open, close and push
       if (state.stream) {
         try { state.stream.end(); } catch(e) {}
         pushCurrentFile();
       }
-      try { cb({ fields, files }); } catch(e) { console.error(e); }
+      triggerCallback();
     });
 
     req.on('error', e => {
