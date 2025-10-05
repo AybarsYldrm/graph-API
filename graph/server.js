@@ -7,8 +7,9 @@ const { parse, execute } = require('./src/graphql');
 const { PKISystem } = require('./src/pki');
 const HttpService = require('./src/services/HttpService');
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 (async () => {
-  // --- init infra ---
   const db = new NoSQL();
   await db.init();
 
@@ -19,10 +20,8 @@ const HttpService = require('./src/services/HttpService');
 
   const pki = new PKISystem();
 
-  // AuthService: dev memory token store by default here
   const authService = new AuthService({ db, pki, smtp, persistTokens: false });
 
-  // HttpService instance (uses your new compact API)
   const http = new HttpService(authService, {
     publicPath: path.join(__dirname, 'public'),
     pagesPath: path.join(__dirname, 'public', 'pages'),
@@ -32,220 +31,50 @@ const HttpService = require('./src/services/HttpService');
     allowedOrigins: ['https://fitfak.net']
   });
 
-  // ---------------- Auth GraphQL schema ----------------
-  // note: resolvers receive context: { db, req, res, authService, http, user }
-  const authSchema = {
-    Mutation: {
-      register: {
-        auth: false,
-        resolve: async (_p, args, { authService }) => {
-          try {
-            const { success, userId, tokenSent } = await authService.register(args);
-            return {
-              success,
-              data: tokenSent ? 'Doğrulama bağlantısı e-posta ile gönderildi.' : 'Kayıt oluşturuldu (test token üretildi).'
-            };
-          } catch (e) {
-            return { success: false, message: e.message };
-          }
-        }
-      },
-
-      login: {
-        auth: false,
-        resolve: async (_p, { email, password }, { authService, req, res }) => {
-          const result = await authService.login(email, password);
-          if (!result.success) return { success: false, message: result.message };
-
-          const token = result.data.token;
-          // return minimal info (token optional)
-          return { success: true, data: { token } };
-        }
-      },
-      session: {
-  auth: false,
-  resolve: async (_p, { token }, { authService, res, req, db }) => {
-    try {
-      // 1) Doğrula
-      const payload = await authService.verifyJWT(token);
-
-      if (!payload) return { success: false, message: 'Invalid or expired token' };
-
-      // 2) (Opsiyonel) DB'den kullanıcı bilgisi çekme — isterseniz kullanın
-      let user = null;
-      try {
-        if (authService.db && payload.id) {
-          user = await authService.db.findOne('users', { id: payload.id });
-        }
-      } catch (e) {
-        console.warn('[SESSION] db lookup failed', e && e.message);
-      }
-
-      // 3) Cookie ayarları
-      // DEV: cross-origin test yapıyorsanız SameSite: 'Lax', secure: false kullanın.
-      // PROD (cross-site): SameSite: 'None' ve secure: true (HTTPS) olmalı.
-      authService.setAuthCookieOnResponse(res, token, {
-        name: 'auth_token',
-        ttlMs: authService.tokenTTL,
-        sameSite: (process.env.NODE_ENV === 'production') ? 'None' : 'Lax',
-        secure: (process.env.NODE_ENV === 'production'),
-        httpOnly: true,
-        path: '/'
-      });
-
-      // 4) hemen Set-Cookie header'ını logla (debug)
-      try {
-        const sc = (res.getHeader && res.getHeader('Set-Cookie')) || null;
-      } catch (e) {
-        console.log('[SESSION] could not read res.getHeader("Set-Cookie")', e && e.message);
-      }
-
-      return { success: true, message: 'Cookie set' };
-    } catch (e) {
-      return { success: false, message: e.message };
-    }
-  }
-},
-
-
-      requestPasswordReset: {
-        auth: false,
-        resolve: async (_p, { email, originUrl }, { req, authService }) => {
-          try {
-            const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-            const result = await authService.requestPasswordReset(email, ip, originUrl);
-            if (!result.success) return { success: false, message: result.message };
-            return { success: true, message: result.tokenSent ? 'Şifre sıfırlama bağlantısı e-posta ile gönderildi.' : 'Şifre sıfırlama tokenı oluşturuldu.' };
-          } catch (e) {
-            return { success: false, message: e.message };
-          }
-        }
-      },
-
-      resetPassword: {
-        auth: false,
-        resolve: async (_p, { token, newPassword }, { authService }) => {
-          try {
-            const result = await authService.resetPassword(token, newPassword);
-            if (!result.success) return { success: false, message: result.message };
-            return { success: true, message: 'Şifre başarıyla değiştirildi ✅' };
-          } catch (e) {
-            return { success: false, message: e.message };
-          }
-        }
-      },
-
-      verifyEmail: {
-        auth: false,
-        resolve: async (_p, { token }, { authService }) => {
-          try {
-            const result = await authService.verifyEmailToken(token);
-            if (!result.success) return { success: false, message: result.message };
-            return { success: true, message: 'Email başarıyla doğrulandı ✅' };
-          } catch (e) {
-            return { success: false, message: e.message };
-          }
-        }
-      }
-    }
+  const cookieDefaults = {
+    name: 'auth_token',
+    ttlMs: authService.tokenTTL,
+    sameSite: isProduction ? 'None' : 'Lax',
+    secure: isProduction,
+    httpOnly: true,
+    path: '/'
   };
 
-  // ---------------- /graph/auth proxy ----------------
-  http.addRoute('POST', '/graph/auth', async (req, res) => {
-    try {
-      const { query, variables } = req.body || {};
-      if (!query) return http.sendJson(res, 400, { success: false, message: 'GraphQL query gerekli.' });
-
-      const ast = parse(query);
-      const result = await execute({
-        schema: authSchema,
-        document: ast,
-        variableValues: variables,
-        // pass res + http + authService so resolvers can set cookies / headers
-        contextValue: { db, req, res, authService, http, user: req.user }
-      });
-
-      return http.sendGraph(res, 200, result);
-    } catch (e) {
-      return http.sendJson(res, 400, { success: false, message: e.message });
-    }
-  }, { auth: false, graph: true });
-
-
-const sessionSchema = {
-  Query: {
-    me: {
-      auth: true,
-      resolve: async (_p, _args, { req, db }) => {
-        const user = await db.findOne('users', { id: req.user.id });
-
-        if (!user) return { success: false, message: 'User not found' };
-
-        // Sadece gerekli alanları döndür
-        const { name, surname, schoolNumber, role } = user;
-
-        return {
-          success: true,
-          data: { id: req.user.id, name, surname, schoolNumber, role }
-        };
-      }
-    }
-  },
-  Mutation: {
-      logout: {
-        auth: true,
-        resolve: async (_p, _args, { authService, req, res }) => {
-          // optional: revoke tokens server-side if implemented
-          if (typeof authService.revokeToken === 'function') {
-            try { await authService.revokeToken(req.user?.id); } catch (e) { /* ignore */ }
-          }
-
-          // clear cookie
-          authService.clearAuthCookieOnResponse(res, 'auth_token', {
-            sameSite: 'Strict',
-            secure: process.env.NODE_ENV === 'production',
-            httpOnly: true,
-            path: '/'
-          });
-
-          return { success: true, message: 'Logged out' };
-        }
-      }
-  }
-};
-
-
-http.addRoute('POST', '/graph/auth/session', async (req, res) => {
-    try {
-      const { query, variables } = req.body || {};
-      if (!query) return http.sendJson(res, 400, { success: false, message: 'GraphQL query gerekli.' });
-
-      const ast = parse(query);
-      const result = await execute({
-        schema: sessionSchema,
-        document: ast,
-        variableValues: variables,
-        // pass res + http + authService so resolvers can set cookies / headers
-        contextValue: { db, req, res, authService, http, user: req.user }
-      });
-
-      return http.sendGraph(res, 200, result);
-    } catch (e) {
-      return http.sendJson(res, 400, { success: false, message: e.message });
-    }
-  }, { auth: true, graph: true });
-  // ---------------- General /graphql endpoint ----------------
-  const schema = {
+  const graphSchema = {
     Query: {
+      me: {
+        auth: true,
+        resolve: async (_p, _args, { req, db }) => {
+          const userId = req.user?.id;
+          if (!userId) throw new Error('Authentication required');
+          const user = await db.findOne('users', { id: userId });
+          if (!user) return { success: false, message: 'User not found' };
+          const { name, surname, schoolNumber, role, email, microsoftUniqueName, lastMicrosoftLogin, pkiIssuedAt } = user;
+          return {
+            success: true,
+            data: {
+              id: userId,
+              name,
+              surname,
+              schoolNumber,
+              role,
+              email,
+              microsoftUniqueName: microsoftUniqueName || null,
+              lastMicrosoftLogin: lastMicrosoftLogin || null,
+              pkiIssuedAt: pkiIssuedAt || null
+            }
+          };
+        }
+      },
       event: {
-        type: 'Event',
+        auth: true,
         resolve: async (_p, { id }, { db }) => {
           const doc = await db.findOne('events', { id });
           return doc ? { __type: 'Event', ...doc } : null;
         }
       },
       events: {
-        type: '[Event!]',
+        auth: true,
         resolve: async (_p, { ownerId, tag }, { db }) => {
           const filter = {};
           if (ownerId) filter.ownerId = ownerId;
@@ -253,9 +82,55 @@ http.addRoute('POST', '/graph/auth/session', async (req, res) => {
           const list = await db.find('events', filter, { limit: 200, sort: (a, b) => a.startsAt.localeCompare(b.startsAt) });
           return list.map(e => ({ __type: 'Event', ...e }));
         }
+      },
+      microsoftAuthorizationUrl: {
+        auth: false,
+        resolve: (_p, args = {}, { authService }) => {
+          if (!authService.microsoftConfigValid()) {
+            return { success: false, message: 'Microsoft OAuth yapılandırması eksik.' };
+          }
+
+          const payload = (args.statePayload && typeof args.statePayload === 'object') ? args.statePayload : {};
+          if (args.origin) payload.origin = args.origin;
+
+          const { url, state } = authService.buildMicrosoftAuthorizationUrl({
+            state: args.state,
+            statePayload: Object.keys(payload).length ? payload : undefined,
+            prompt: args.prompt,
+            loginHint: args.loginHint,
+            domainHint: args.domainHint,
+            codeChallenge: args.codeChallenge,
+            codeChallengeMethod: args.codeChallengeMethod
+          });
+
+          return { success: true, data: { url, state } };
+        }
       }
     },
     Mutation: {
+      completeMicrosoftLogin: {
+        auth: false,
+        resolve: async (_p, { code, state, codeVerifier }, { authService, res }) => {
+          try {
+            const result = await authService.handleMicrosoftCallback({ code, state, codeVerifier });
+            if (result.success && result.data?.cookie?.token) {
+              const cfg = Object.assign({}, cookieDefaults);
+              if (result.data.cookie.ttlMs != null) cfg.ttlMs = result.data.cookie.ttlMs;
+              authService.setAuthCookieOnResponse(res, result.data.cookie.token, cfg);
+            }
+            return result;
+          } catch (e) {
+            return { success: false, message: e.message };
+          }
+        }
+      },
+      logout: {
+        auth: true,
+        resolve: async (_p, _args, { authService, res }) => {
+          authService.clearAuthCookieOnResponse(res, cookieDefaults.name, cookieDefaults);
+          return { success: true, message: 'Logged out' };
+        }
+      },
       createEvent: {
         type: 'Event',
         auth: true,
@@ -287,24 +162,29 @@ http.addRoute('POST', '/graph/auth/session', async (req, res) => {
     types: { Event: {} }
   };
 
-  http.addRoute('POST', '/graph', async (req, res) => {
-    const { query, variables } = req.body || {};
-    if (!query) return http.sendJson(res, 400, { error: 'query required' });
-    try {
-      const ast = parse(query);
-      const result = await execute({
-        schema,
-        document: ast,
-        variableValues: variables,
-        contextValue: { db, req, res, authService, http, user: req.user }
-      });
-      return http.sendGraph(res, 200, result);
-    } catch (e) {
-      return http.sendJson(res, 400, { error: e.message });
-    }
-  }, { auth: true, graph: true });
+  const registerGraphEndpoint = (pathPattern) => {
+    http.registerGraphQL(pathPattern, {
+      schema: graphSchema,
+      parse,
+      execute,
+      contextFactory: ({ req }) => ({ db, authService, pki, user: req?.user || null })
+    });
+  };
 
-  // ---------------- PKI sign/verify ----------------
+  registerGraphEndpoint('/graphql');
+  registerGraphEndpoint('/graph');
+
+  http.registerMicrosoftAuthRoutes({
+    loginPath: '/auth/microsoft',
+    callbackPath: '/auth/microsoft/callback',
+    logoutPath: '/auth/logout',
+    successRedirect: '/pages/dashboard.html',
+    failureRedirect: '/pages/login.html',
+    logoutRedirect: '/pages/login.html',
+    cookie: cookieDefaults,
+    allowedRedirectOrigins: ['https://fitfak.net', 'http://localhost:3000', 'https://localhost:3000']
+  });
+
   http.addRoute('POST', '/sign', async (req, res) => {
     const { payload } = req.body || {};
     if (!payload) return http.sendJson(res, 400, { success: false, message: 'Missing payload' });
@@ -325,9 +205,8 @@ http.addRoute('POST', '/graph/auth/session', async (req, res) => {
     } catch (e) {
       return http.sendJson(res, 400, { success: false, message: e.message });
     }
-  }, { auth: true, roles: ['admin','user'] });
+  }, { auth: true, roles: ['admin', 'user'] });
 
-  // ---------------- HTML upload route ----------------
   http.addRoute('POST', '/html', async (req, res) => {
     if (!req.body || !req.body.files) return http.sendJson(res, 400, { success: false, files: [] });
     const files = req.body.files.map(f => ({ field: f.fieldname, filename: f.filename }));
@@ -345,7 +224,6 @@ http.addRoute('POST', '/graph/auth/session', async (req, res) => {
     }
   });
 
-  // ---------------- start server ----------------
   const port = process.env.PORT || 80;
   http.listen(port, () => console.log(`Server listening on ${port}`));
 })();

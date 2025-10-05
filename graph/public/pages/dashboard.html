@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Yönetim Paneli</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: radial-gradient(circle at top, #05070e, #020305 65%);
+      --surface: rgba(12, 16, 28, 0.92);
+      --surface-soft: rgba(16, 20, 32, 0.7);
+      --text: #f5f7fb;
+      --muted: #9aa4b8;
+      --accent: #8ab4f8;
+      --border: rgba(138, 180, 248, 0.18);
+      --danger: #ff6b81;
+      --radius: 16px;
+      font-family: 'Segoe UI', Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    header.dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 26px 28px 18px;
+      max-width: 1180px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-mark {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: linear-gradient(145deg, rgba(138,180,248,0.4), rgba(53,74,182,0.35));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.2rem;
+      box-shadow: 0 16px 36px rgba(8, 12, 30, 0.55);
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 1.6rem;
+    }
+    .brand p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+    .user-info strong {
+      font-size: 1.05rem;
+    }
+    .user-meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    button.logout {
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(138, 180, 248, 0.35);
+      background: transparent;
+      color: var(--accent);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    main.content {
+      flex: 1;
+      width: 100%;
+      max-width: 1180px;
+      margin: 0 auto 40px;
+      padding: 0 28px 28px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 50px rgba(4, 6, 14, 0.55);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .card h2 {
+      margin: 0;
+      font-size: 1.3rem;
+    }
+    .details {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 8px 12px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .details span {
+      color: var(--text);
+    }
+    ul#eventList {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    li.event-item {
+      padding: 14px;
+      border-radius: 12px;
+      background: var(--surface-soft);
+      border: 1px solid rgba(138,180,248,0.12);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .event-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+    }
+    .event-meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .event-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .event-actions button {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .event-actions button.delete {
+      border-color: rgba(255,107,129,0.35);
+      color: var(--danger);
+    }
+    form#eventForm {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    form#eventForm label {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    form#eventForm input, form#eventForm textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(138,180,248,0.22);
+      background: rgba(10, 14, 24, 0.6);
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    form#eventForm button {
+      align-self: flex-start;
+      padding: 10px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(138,180,248,0.35);
+      background: rgba(138,180,248,0.25);
+      color: var(--text);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .hidden { display: none; }
+    #messageBox {
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+    #messageBox.success { color: #7dd87d; }
+    #messageBox.error { color: var(--danger); }
+    footer.footer {
+      text-align: center;
+      padding: 16px 24px 28px;
+      color: rgba(153,164,184,0.78);
+      font-size: 0.85rem;
+    }
+    @media (max-width: 760px) {
+      header.dashboard-header { flex-direction: column; align-items: flex-start; padding: 22px 18px 12px; }
+      main.content { padding: 0 18px 24px; }
+      .user-info { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header class="dashboard-header">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">GA</div>
+      <div>
+        <h1>Yönetim Paneli</h1>
+        <p>Graph API &amp; PKI altyapısı</p>
+      </div>
+    </div>
+    <div class="user-info">
+      <strong id="userName">Yükleniyor…</strong>
+      <div class="user-meta"><span id="userRole">—</span> · <span id="userEmail">—</span></div>
+      <button id="btnLogout" class="logout" type="button">Çıkış Yap</button>
+    </div>
+  </header>
+
+  <main class="content">
+    <section class="card">
+      <h2>Oturum Özeti</h2>
+      <div class="details">
+        <div>Son Microsoft giriş:</div>
+        <span id="lastLogin">—</span>
+        <div>PKI sertifika durumu:</div>
+        <span id="pkiStatus">—</span>
+        <div>Microsoft kullanıcı adı:</div>
+        <span id="msAlias">—</span>
+      </div>
+      <div id="messageBox" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="card">
+      <h2>Etkinlikler</h2>
+      <ul id="eventList"></ul>
+    </section>
+
+    <section class="card hidden" id="adminPanel">
+      <h2>Yeni Etkinlik Oluştur</h2>
+      <form id="eventForm">
+        <div>
+          <label for="evTitle">Başlık</label>
+          <input id="evTitle" name="evTitle" required />
+        </div>
+        <div>
+          <label for="evStart">Başlangıç (ISO)</label>
+          <input id="evStart" name="evStart" placeholder="2024-08-30T09:30" />
+        </div>
+        <div>
+          <label for="evEnd">Bitiş (ISO)</label>
+          <input id="evEnd" name="evEnd" placeholder="2024-08-30T11:00" />
+        </div>
+        <div>
+          <label for="evLocation">Yer</label>
+          <input id="evLocation" name="evLocation" placeholder="Kampüs A Blok" />
+        </div>
+        <div>
+          <label for="evTags">Etiketler (virgülle ayır)</label>
+          <input id="evTags" name="evTags" placeholder="eğitim, workshop" />
+        </div>
+        <button type="submit">Etkinliği Kaydet</button>
+      </form>
+    </section>
+  </main>
+
+  <footer class="footer">&copy; <span id="footerYear"></span> FitFak Network · Güvenli iletişim altyapısı</footer>
+
+  <script>
+    (function() {
+      const state = {
+        user: null,
+        events: []
+      };
+
+      const els = {
+        userName: document.getElementById('userName'),
+        userRole: document.getElementById('userRole'),
+        userEmail: document.getElementById('userEmail'),
+        lastLogin: document.getElementById('lastLogin'),
+        pkiStatus: document.getElementById('pkiStatus'),
+        msAlias: document.getElementById('msAlias'),
+        eventList: document.getElementById('eventList'),
+        messageBox: document.getElementById('messageBox'),
+        adminPanel: document.getElementById('adminPanel'),
+        eventForm: document.getElementById('eventForm'),
+        logout: document.getElementById('btnLogout'),
+        footerYear: document.getElementById('footerYear')
+      };
+      els.footerYear.textContent = new Date().getFullYear();
+
+      async function graphFetch(query, variables) {
+        try {
+          const res = await fetch('/graph', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(variables ? { query, variables } : { query })
+          });
+          return await res.json();
+        } catch (err) {
+          return { errors: [{ message: err.message }] };
+        }
+      }
+
+      function setMessage(text, type) {
+        els.messageBox.textContent = text || '';
+        els.messageBox.className = '';
+        if (!text) return;
+        if (type === 'error') els.messageBox.classList.add('error');
+        else if (type === 'success') els.messageBox.classList.add('success');
+      }
+
+      function formatDate(value) {
+        if (!value) return '—';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleString('tr-TR', { hour12: false });
+      }
+
+      function renderUser() {
+        if (!state.user) return;
+        const displayName = [state.user.name, state.user.surname].filter(Boolean).join(' ').trim() || state.user.email;
+        els.userName.textContent = displayName;
+        els.userRole.textContent = (state.user.role || '').toUpperCase();
+        els.userEmail.textContent = state.user.email || '—';
+        els.lastLogin.textContent = formatDate(state.user.lastMicrosoftLogin);
+        els.pkiStatus.textContent = state.user.pkiIssuedAt ? `Sertifika ${formatDate(state.user.pkiIssuedAt)} tarihinde üretildi.` : 'Sertifika bekleniyor';
+        els.msAlias.textContent = state.user.microsoftUniqueName || '—';
+        if ((state.user.role || '').toLowerCase() === 'admin') {
+          els.adminPanel.classList.remove('hidden');
+        } else {
+          els.adminPanel.classList.add('hidden');
+        }
+      }
+
+      function renderEvents() {
+        els.eventList.innerHTML = '';
+        if (!state.events.length) {
+          const empty = document.createElement('li');
+          empty.className = 'event-item';
+          empty.textContent = 'Henüz etkinlik bulunmuyor.';
+          els.eventList.appendChild(empty);
+          return;
+        }
+        state.events.forEach(evt => {
+          const li = document.createElement('li');
+          li.className = 'event-item';
+
+          const header = document.createElement('div');
+          header.className = 'event-header';
+          header.textContent = evt.title || 'Etkinlik';
+
+          const meta = document.createElement('div');
+          meta.className = 'event-meta';
+          const spanSchedule = document.createElement('span');
+          spanSchedule.textContent = `${formatDate(evt.startsAt)} → ${formatDate(evt.endsAt)}`;
+          const spanLocation = document.createElement('span');
+          spanLocation.textContent = evt.location || 'Yer belirtilmedi';
+          const spanTags = document.createElement('span');
+          const tags = Array.isArray(evt.tags) ? evt.tags.filter(Boolean) : [];
+          spanTags.textContent = tags.length ? `#${tags.join(' #')}` : '#etiket-yok';
+          meta.appendChild(spanSchedule);
+          meta.appendChild(spanLocation);
+          meta.appendChild(spanTags);
+
+          li.appendChild(header);
+          li.appendChild(meta);
+
+          if ((state.user?.role || '').toLowerCase() === 'admin') {
+            const actions = document.createElement('div');
+            actions.className = 'event-actions';
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'delete';
+            deleteBtn.textContent = 'Sil';
+            deleteBtn.dataset.id = evt.id;
+            actions.appendChild(deleteBtn);
+            li.appendChild(actions);
+          }
+
+          els.eventList.appendChild(li);
+        });
+      }
+
+      async function loadUser() {
+        const result = await graphFetch('query DashboardMe { me { success message data { id name surname role email microsoftUniqueName lastMicrosoftLogin pkiIssuedAt } } }');
+        const payload = result && result.data && result.data.me ? result.data.me : null;
+        if (!payload || !payload.success || !payload.data) {
+          window.location.href = '/pages/login.html';
+          return;
+        }
+        state.user = payload.data;
+        renderUser();
+      }
+
+      async function loadEvents() {
+        const result = await graphFetch('query DashboardEvents { events { id title startsAt endsAt location tags ownerId } }');
+        if (result && result.data && Array.isArray(result.data.events)) {
+          state.events = result.data.events;
+          renderEvents();
+        } else {
+          setMessage('Etkinlik listesi alınamadı.', 'error');
+        }
+      }
+
+      async function createEvent(payload) {
+        const mutation = `mutation CreateEvent($title: String!, $startsAt: String, $endsAt: String, $location: String, $tags: [String!]) {
+          createEvent(title: $title, startsAt: $startsAt, endsAt: $endsAt, location: $location, tags: $tags) {
+            id title startsAt endsAt location tags
+          }
+        }`;
+        const result = await graphFetch(mutation, payload);
+        if (result.errors && result.errors.length) {
+          throw new Error(result.errors[0].message);
+        }
+        if (!result.data || !result.data.createEvent) {
+          throw new Error('Beklenmeyen yanıt');
+        }
+        return result.data.createEvent;
+      }
+
+      async function deleteEvent(eventId) {
+        const mutation = `mutation DeleteEvent($id: ID!) { deleteEvent(id: $id) }`;
+        const result = await graphFetch(mutation, { id: eventId });
+        if (result.errors && result.errors.length) {
+          throw new Error(result.errors[0].message);
+        }
+        if (!result.data || result.data.deleteEvent !== true) {
+          throw new Error('Etkinlik silinemedi');
+        }
+      }
+
+      els.eventForm.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        setMessage('Etkinlik kaydediliyor…');
+        const title = ev.target.evTitle.value.trim();
+        if (!title) {
+          setMessage('Başlık zorunludur.', 'error');
+          return;
+        }
+        const payload = {
+          title,
+          startsAt: ev.target.evStart.value.trim() || null,
+          endsAt: ev.target.evEnd.value.trim() || null,
+          location: ev.target.evLocation.value.trim() || null,
+          tags: ev.target.evTags.value.split(',').map(t => t.trim()).filter(Boolean)
+        };
+        try {
+          await createEvent(payload);
+          setMessage('Etkinlik oluşturuldu.', 'success');
+          ev.target.reset();
+          await loadEvents();
+        } catch (err) {
+          setMessage(err.message || 'Etkinlik oluşturulamadı.', 'error');
+        }
+      });
+
+      els.eventList.addEventListener('click', async (ev) => {
+        const target = ev.target;
+        if (!(target instanceof HTMLElement)) return;
+        if (!target.classList.contains('delete')) return;
+        const eventId = target.dataset.id;
+        if (!eventId) return;
+        const confirmed = window.confirm('Etkinliği silmek istediğinize emin misiniz?');
+        if (!confirmed) return;
+        setMessage('Etkinlik siliniyor…');
+        try {
+          await deleteEvent(eventId);
+          setMessage('Etkinlik silindi.', 'success');
+          await loadEvents();
+        } catch (err) {
+          setMessage(err.message || 'Etkinlik silinemedi.', 'error');
+        }
+      });
+
+      els.logout.addEventListener('click', async () => {
+        try {
+          await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+        } catch (err) {
+          // ignore
+        }
+        window.location.href = '/pages/login.html';
+      });
+
+      async function init() {
+        await loadUser();
+        await loadEvents();
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

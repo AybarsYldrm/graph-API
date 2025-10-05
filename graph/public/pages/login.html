@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Microsoft ile Giriş Yap</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: linear-gradient(180deg, #04060d 0%, #050609 100%);
+      --card: rgba(12, 16, 28, 0.88);
+      --accent: #8ab4f8;
+      --text: #f5f7fa;
+      --muted: #9aa4b5;
+      --radius: 16px;
+      font-family: 'Segoe UI', Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      color: var(--text);
+    }
+    main.login-card {
+      width: min(440px, 100%);
+      padding: 32px 30px;
+      border-radius: var(--radius);
+      background: var(--card);
+      box-shadow: 0 24px 60px rgba(3, 5, 12, 0.55);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      border: 1px solid rgba(138, 180, 248, 0.18);
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.6rem;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    button {
+      margin-top: 12px;
+      padding: 12px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(138, 180, 248, 0.4);
+      background: linear-gradient(135deg, rgba(138,180,248,0.55), rgba(77,105,226,0.4));
+      color: var(--text);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform .15s ease, box-shadow .15s ease;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 36px rgba(138,180,248,0.28);
+    }
+    .links {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+    a.back-link {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a.back-link:hover {
+      text-decoration: underline;
+    }
+    #loginStatus {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="login-card">
+    <h1>Microsoft ile Giriş</h1>
+    <p>Kurumsal Microsoft hesabınızı kullanarak tek seferde giriş yapabilir ve PKI altyapısına otomatik olarak kaydedilirsiniz.</p>
+    <button id="btnMicrosoftLogin" type="button">Microsoft ile Devam Et</button>
+    <div id="loginStatus" aria-live="polite">Kimlik doğrulaması bekleniyor…</div>
+    <div class="links">
+      <a class="back-link" href="/">Ana sayfaya dön</a>
+      <a class="back-link" href="/pages/dashboard.html">Kontrol paneline git</a>
+    </div>
+  </main>
+
+  <script>
+    (function() {
+      const loginButton = document.getElementById('btnMicrosoftLogin');
+      const statusText = document.getElementById('loginStatus');
+      const dashboardOrigin = encodeURIComponent('/pages/dashboard.html');
+
+      loginButton.addEventListener('click', () => {
+        window.location.href = `/auth/microsoft?origin=${dashboardOrigin}`;
+      });
+
+      async function graphFetch(query) {
+        try {
+          const res = await fetch('/graph', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ query })
+          });
+          return await res.json();
+        } catch (err) {
+          return { errors: [{ message: err.message }] };
+        }
+      }
+
+      async function checkSession() {
+        statusText.textContent = 'Oturum durumu kontrol ediliyor…';
+        const result = await graphFetch('query LoginCheck { me { success data { name role } } }');
+        const payload = result && result.data && result.data.me ? result.data.me : null;
+        if (payload && payload.success && payload.data) {
+          statusText.textContent = `${payload.data.name || 'Oturum'} açık. Kontrol paneline yönlendiriliyorsunuz…`;
+          setTimeout(() => { window.location.href = '/pages/dashboard.html'; }, 1200);
+          return;
+        }
+        statusText.textContent = 'Giriş yapmak için yukarıdaki butona tıklayın.';
+      }
+
+      checkSession();
+    })();
+  </script>
+</body>
+</html>

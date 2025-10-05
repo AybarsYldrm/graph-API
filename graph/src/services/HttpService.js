@@ -19,6 +19,7 @@ class HttpService {
 
     // public / defaults
     this.publicPath = options.publicPath || path.join(process.cwd(), 'public');
+    this.pagesPath = options.pagesPath || path.join(this.publicPath, 'pages');
     this.uploadDefaultLimit = options.uploadDefaultLimit || 5 * 1024 * 1024;
     this.uploadDefaultMaxKBps = options.uploadDefaultMaxKBps || null;
     this.allowedOrigins = options.allowedOrigins || ['*'];
@@ -33,9 +34,15 @@ class HttpService {
 
     // security headers default
     this.securityHeaders = Object.assign({
-      'X-Content-Type-Options':'nosniff',
-      'X-Frame-Options':'DENY',
-      'Strict-Transport-Security':'max-age=31536000; includeSubDomains'
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+      'Referrer-Policy': 'no-referrer',
+      'Permissions-Policy': 'geolocation=(), microphone=()',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Resource-Policy': 'same-origin',
+      'X-DNS-Prefetch-Control': 'off',
+      'X-XSS-Protection': '0'
     }, options.securityHeaders || {});
   }
 
@@ -57,8 +64,10 @@ _buildCorsHeaders(req, extra = {}) {
   }
 
   headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS';
-  headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Csrf-Token';
+  headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Csrf-Token,Accept,X-Requested-With';
   headers['Access-Control-Allow-Credentials'] = 'true';
+  headers['Access-Control-Expose-Headers'] = headers['Access-Control-Expose-Headers'] || 'Content-Length, Content-Type';
+  headers['Vary'] = headers['Vary'] ? `${headers['Vary']}, Origin` : 'Origin';
   return headers;
 }
 
@@ -100,6 +109,41 @@ _buildCorsHeaders(req, extra = {}) {
     return out;
   }
 
+  _wantsJson(req) {
+    const accept = (req && req.headers && req.headers.accept) || '';
+    return /application\/json/i.test(accept);
+  }
+
+  _resolveHtmlFile(pathname) {
+    const cleanPath = pathname.replace(/\/+$/, '') || '/';
+    if (cleanPath === '/' || cleanPath === '') {
+      const indexFile = this._safeJoin(this.publicPath, 'index.html');
+      if (indexFile && fs.existsSync(indexFile)) return indexFile;
+      return null;
+    }
+
+    const slug = cleanPath.replace(/^\//, '');
+    const trimmed = slug.startsWith('pages/') ? slug.slice('pages/'.length) : slug;
+    const hasHtmlExtension = trimmed.endsWith('.html');
+
+    const candidates = [];
+    if (trimmed) {
+      const withHtml = hasHtmlExtension ? trimmed : `${trimmed}.html`;
+      candidates.push(this._safeJoin(this.pagesPath, withHtml));
+      candidates.push(this._safeJoin(this.pagesPath, path.join(trimmed, 'index.html')));
+    }
+
+    if (slug.endsWith('.html')) {
+      candidates.push(this._safeJoin(this.publicPath, slug));
+    }
+
+    for (const candidate of candidates) {
+      if (candidate && fs.existsSync(candidate)) return candidate;
+    }
+
+    return null;
+  }
+
   // ---------- send helpers ----------
   // sendJson
 sendJson(res, statusCode, payload, extraHeaders = {}, req = null) {
@@ -126,7 +170,8 @@ sendJson(res, statusCode, payload, extraHeaders = {}, req = null) {
 sendGraph(res, statusCode, raw, extraHeaders = {}, req = null) {
   if (res.headersSent) return;
   const cors = this._buildCorsHeaders(req, extraHeaders);
-  const headers = Object.assign({ 'Content-Type':'application/json; charset=utf-8' }, cors);
+  const headers = Object.assign({ 'Content-Type':'application/graphql-response+json; charset=utf-8' }, cors);
+  headers['Vary'] = headers['Vary'] ? `${headers['Vary']}, Accept` : 'Accept';
 
   try {
     const existing = (res.getHeader && res.getHeader('Set-Cookie')) || null;
@@ -138,12 +183,20 @@ sendGraph(res, statusCode, raw, extraHeaders = {}, req = null) {
 }
 
 // sendHtml
-sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
+sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null, hashDirectives = {}) {
   if (res.headersSent) return;
   let csp = `default-src 'self'; base-uri 'self'; frame-ancestors 'none'`;
   if (nonce) {
-    csp += `; script-src 'nonce-${nonce}' 'strict-dynamic'`;
-    csp += `; style-src 'nonce-${nonce}'`;
+    const scriptParts = new Set([`'self'`, `'nonce-${nonce}'`, `'strict-dynamic'`]);
+    const styleParts = new Set([`'self'`, `'nonce-${nonce}'`]);
+    if (Array.isArray(hashDirectives.scripts)) {
+      for (const h of hashDirectives.scripts) scriptParts.add(h);
+    }
+    if (Array.isArray(hashDirectives.styles)) {
+      for (const h of hashDirectives.styles) styleParts.add(h);
+    }
+    csp += `; script-src ${Array.from(scriptParts).join(' ')}`;
+    csp += `; style-src ${Array.from(styleParts).join(' ')}`;
     csp += `; object-src 'none'`;
     csp += `; img-src 'self' data:`;
   } else {
@@ -179,6 +232,305 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
     if (options.rateLimit) {
       const key = `${route.method}:${route.path}`;
       if (!this.customRateStores.has(key)) this.customRateStores.set(key, new Map());
+    }
+  }
+
+  registerGraphQL(pathPattern, config = {}) {
+    const { schema, parse, execute, contextFactory, allowGetMutations = false } = config;
+    if (!pathPattern) throw new Error('GraphQL pathPattern gerekli.');
+    if (!schema) throw new Error('GraphQL schema tanımlı olmalıdır.');
+    if (typeof parse !== 'function') throw new Error('GraphQL parse fonksiyonu gerekli.');
+    if (typeof execute !== 'function') throw new Error('GraphQL execute fonksiyonu gerekli.');
+
+    const baseOptions = Object.assign({ graph: true }, config.routeOptions || {});
+
+    const ensureUserOnRequest = async (req) => {
+      if (req.user || !this.authService) return;
+      try {
+        const authHeader = req.headers['authorization'] || '';
+        let token = null;
+        if (authHeader.startsWith('Bearer ')) token = authHeader.slice(7);
+        if (!token) token = this._getCookie(req, 'auth_token');
+        if (!token) return;
+        const verified = await this.authService.verifyJWT(token);
+        if (verified) req.user = verified.user || verified.payload || verified;
+      } catch (err) {
+        // ignore token errors, resolver level yetkisi hataya düşecek
+      }
+    };
+
+    const getOperationDefinition = (document, operationName) => {
+      for (const def of document.definitions || []) {
+        if (def.kind !== 'OperationDefinition') continue;
+        if (!operationName) return def;
+        if (def.name && def.name.value === operationName) return def;
+      }
+      return null;
+    };
+
+    const parseVariables = (input) => {
+      if (input == null) return {};
+      if (typeof input === 'string' && input.trim() === '') return {};
+      if (typeof input === 'string') {
+        try { return JSON.parse(input); } catch (err) { throw new Error('variables alanı geçerli JSON olmalıdır.'); }
+      }
+      if (typeof input === 'object') return input;
+      throw new Error('variables alanı desteklenmeyen formatta.');
+    };
+
+    const handler = async (req, res) => {
+      const accept = req.headers.accept || '';
+      if (accept && accept !== '*/*' && !/application\/graphql-response\+json/i.test(accept) && !/application\/json/i.test(accept)) {
+        const headers = this._buildCorsHeaders(req, { 'Content-Type': 'text/plain; charset=utf-8', Allow: 'GET, POST, OPTIONS' });
+        headers['Vary'] = headers['Vary'] ? `${headers['Vary']}, Accept` : 'Accept';
+        res.writeHead(406, headers);
+        res.end('Not Acceptable');
+        return;
+      }
+
+      await ensureUserOnRequest(req);
+
+      let query = null;
+      let variables = {};
+      let operationName = undefined;
+
+      if (req.method === 'GET') {
+        const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+        query = parsedUrl.searchParams.get('query');
+        const varsRaw = parsedUrl.searchParams.get('variables');
+        operationName = parsedUrl.searchParams.get('operationName') || undefined;
+        if (!query) {
+          return this.sendGraph(res, 400, { data: null, errors: [{ message: '"query" parametresi zorunludur.' }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+        }
+        try {
+          variables = parseVariables(varsRaw);
+        } catch (err) {
+          return this.sendGraph(res, 400, { data: null, errors: [{ message: err.message }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+        }
+      } else if (req.method === 'POST') {
+        let body = req.body;
+        if (typeof body === 'string') {
+          try { body = JSON.parse(body); } catch (err) {
+            return this.sendGraph(res, 400, { data: null, errors: [{ message: 'Gönderilen gövde geçerli JSON değil.' }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+          }
+        }
+        body = body || {};
+        query = body.query || null;
+        operationName = body.operationName || undefined;
+        try {
+          variables = parseVariables(body.variables);
+        } catch (err) {
+          return this.sendGraph(res, 400, { data: null, errors: [{ message: err.message }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+        }
+        if (!query && typeof req.rawBody === 'string' && req.rawBody.trim()) {
+          query = req.rawBody.trim();
+        }
+        if (!query) {
+          return this.sendGraph(res, 400, { data: null, errors: [{ message: 'GraphQL sorgusu gerekli.' }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+        }
+      } else {
+        return this.sendGraph(res, 405, { data: null, errors: [{ message: 'Yalnızca GET veya POST desteklenir.' }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+      }
+
+      let document;
+      try {
+        document = parse(query);
+      } catch (err) {
+        return this.sendGraph(res, 400, { data: null, errors: [{ message: err.message }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+      }
+
+      const opDef = getOperationDefinition(document, operationName);
+      if (!opDef) {
+        return this.sendGraph(res, 400, { data: null, errors: [{ message: 'Belirtilen operasyon bulunamadı.' }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+      }
+
+      if (req.method === 'GET' && opDef.operation !== 'query' && !allowGetMutations) {
+        return this.sendGraph(res, 405, { data: null, errors: [{ message: 'GET isteğiyle yalnızca query operasyonu çağrılabilir.' }] }, { Allow: 'GET, POST, OPTIONS' }, req);
+      }
+
+      let contextValue = {};
+      if (typeof contextFactory === 'function') {
+        const maybe = await contextFactory({ req, res, user: req.user, authService: this.authService, httpService: this });
+        if (maybe && typeof maybe === 'object') contextValue = maybe;
+      }
+      if (!contextValue || typeof contextValue !== 'object') contextValue = {};
+      contextValue.req = req;
+      contextValue.res = res;
+      contextValue.http = this;
+      contextValue.authService = this.authService;
+      contextValue.user = req.user;
+
+      let executionResult;
+      try {
+        executionResult = await execute({ schema, document, variableValues: variables, contextValue, operationName });
+      } catch (err) {
+        return this.sendGraph(res, 500, { data: null, errors: [{ message: err.message }] }, {}, req);
+      }
+
+      if (!executionResult || typeof executionResult !== 'object') {
+        return this.sendGraph(res, 500, { data: null, errors: [{ message: 'GraphQL yürütmesi beklenmeyen sonuç döndürdü.' }] }, {}, req);
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(executionResult, 'data')) {
+        executionResult = Object.assign({ data: null }, executionResult);
+      }
+
+      const status = this._statusFromGraphErrors(executionResult.errors);
+      return this.sendGraph(res, status, executionResult, {}, req);
+    };
+
+    // CORS preflight / OPTIONS
+    this.addRoute('OPTIONS', pathPattern, (req, res) => {
+      const headers = this._buildCorsHeaders(req, { Allow: 'GET, POST, OPTIONS' });
+      res.writeHead(204, headers);
+      res.end();
+    }, baseOptions);
+
+    this.addRoute('GET', pathPattern, handler, baseOptions);
+    this.addRoute('POST', pathPattern, handler, baseOptions);
+  }
+
+  registerMicrosoftAuthRoutes(options = {}) {
+    if (!this.authService) throw new Error('AuthService gerekli.');
+
+    const loginPath = options.loginPath || '/auth/microsoft';
+    const callbackPath = options.callbackPath || '/auth/microsoft/callback';
+    const logoutPath = options.logoutPath || '/auth/logout';
+    const logoutMethod = (options.logoutMethod || 'POST').toUpperCase();
+    const successRedirect = options.successRedirect || '/';
+    const failureRedirect = options.failureRedirect || '/';
+    const logoutRedirect = options.logoutRedirect || successRedirect;
+    const allowedRedirectOrigins = Array.isArray(options.allowedRedirectOrigins)
+      ? options.allowedRedirectOrigins.filter(Boolean)
+      : [];
+    const cookieOptions = Object.assign({}, options.cookie || {});
+
+    const sendHtmlMessage = (req, res, status, title, message) => {
+      const safeTitle = this._sanitizeString(title);
+      const safeMessage = this._sanitizeString(message);
+      const prepared = this._prepareHtmlForResponse(`<!doctype html><html lang="tr"><head><meta charset="utf-8"/><title>${safeTitle}</title></head><body><main><h1>${safeTitle}</h1><p>${safeMessage}</p></main></body></html>`);
+      return this.sendHtml(res, status, prepared.html, prepared.nonce, {}, req, {
+        scripts: prepared.scriptHashes,
+        styles: prepared.styleHashes
+      });
+    };
+
+    this.addRoute('GET', loginPath, (req, res) => {
+      if (!this.authService.microsoftConfigValid()) {
+        const msg = 'Microsoft OAuth yapılandırması yapılmadı.';
+        if (this._wantsJson(req)) return this.sendJson(res, 503, { success: false, message: msg });
+        if (failureRedirect) {
+          const safe = this.resolveRedirectTarget(req, failureRedirect, { fallback: '/', allowList: allowedRedirectOrigins });
+          return this.redirectHtml(res, safe, 302);
+        }
+        return sendHtmlMessage(req, res, 503, 'Microsoft OAuth kullanılamıyor', msg);
+      }
+
+      const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const origin = parsedUrl.searchParams.get('origin');
+      const prompt = parsedUrl.searchParams.get('prompt');
+      const loginHint = parsedUrl.searchParams.get('login_hint');
+      const domainHint = parsedUrl.searchParams.get('domain_hint');
+      const codeChallenge = parsedUrl.searchParams.get('code_challenge');
+      const codeChallengeMethod = parsedUrl.searchParams.get('code_challenge_method');
+
+      const statePayload = {};
+      if (origin) statePayload.origin = origin;
+
+      const { url: redirectUrl, state } = this.authService.buildMicrosoftAuthorizationUrl({
+        statePayload: Object.keys(statePayload).length ? statePayload : undefined,
+        prompt,
+        loginHint,
+        domainHint,
+        codeChallenge,
+        codeChallengeMethod
+      });
+
+      if (this._wantsJson(req)) {
+        return this.sendJson(res, 200, { success: true, data: { url: redirectUrl, state } });
+      }
+
+      return this.redirectHtml(res, redirectUrl, 302);
+    });
+
+    this.addRoute('GET', callbackPath, async (req, res) => {
+      const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const error = parsedUrl.searchParams.get('error');
+      const errorDescription = parsedUrl.searchParams.get('error_description');
+      if (error) {
+        const message = `${error}: ${errorDescription || ''}`.trim();
+        if (this._wantsJson(req)) return this.sendJson(res, 400, { success: false, message });
+        if (failureRedirect) {
+          const safe = this.resolveRedirectTarget(req, failureRedirect, { fallback: '/', allowList: allowedRedirectOrigins });
+          return this.redirectHtml(res, safe, 302);
+        }
+        return sendHtmlMessage(req, res, 400, 'Microsoft OAuth hatası', message || 'Bilinmeyen hata');
+      }
+
+      const code = parsedUrl.searchParams.get('code');
+      const state = parsedUrl.searchParams.get('state');
+      if (!code) {
+        const msg = 'Eksik Microsoft kodu';
+        if (this._wantsJson(req)) return this.sendJson(res, 400, { success: false, message: msg });
+        if (failureRedirect) {
+          const safe = this.resolveRedirectTarget(req, failureRedirect, { fallback: '/', allowList: allowedRedirectOrigins });
+          return this.redirectHtml(res, safe, 302);
+        }
+        return sendHtmlMessage(req, res, 400, 'Microsoft OAuth hatası', msg);
+      }
+
+      try {
+        const result = await this.authService.handleMicrosoftCallback({ code, state });
+        if (result.success && result.data?.cookie?.token) {
+          const cookieCfg = Object.assign({}, cookieOptions);
+          if (result.data.cookie.ttlMs != null) cookieCfg.ttlMs = result.data.cookie.ttlMs;
+          this.authService.setAuthCookieOnResponse(res, result.data.cookie.token, cookieCfg);
+        }
+
+        const stateInfo = result.data?.state;
+        const redirectTarget = this.resolveRedirectTarget(
+          req,
+          stateInfo && stateInfo.origin,
+          { fallback: successRedirect, allowList: allowedRedirectOrigins }
+        );
+
+        if (this._wantsJson(req)) {
+          return this.sendJson(res, 200, {
+            success: true,
+            data: {
+              redirect: redirectTarget,
+              state: stateInfo || null,
+              user: result.data?.user || null
+            }
+          });
+        }
+
+        return this.redirectHtml(res, redirectTarget, 302);
+      } catch (err) {
+        const msg = err && err.message ? err.message : 'Microsoft OAuth işlemi başarısız';
+        if (this._wantsJson(req)) return this.sendJson(res, 500, { success: false, message: msg });
+        if (failureRedirect) {
+          const safe = this.resolveRedirectTarget(req, failureRedirect, { fallback: '/', allowList: allowedRedirectOrigins });
+          return this.redirectHtml(res, safe, 302);
+        }
+        return sendHtmlMessage(req, res, 500, 'Microsoft OAuth işlemi başarısız', msg);
+      }
+    });
+
+    const logoutHandler = (req, res) => {
+      const name = cookieOptions.name || 'auth_token';
+      this.authService.clearAuthCookieOnResponse(res, name, cookieOptions);
+      const target = this.resolveRedirectTarget(req, logoutRedirect, {
+        fallback: successRedirect || '/',
+        allowList: allowedRedirectOrigins
+      });
+      if (this._wantsJson(req)) return this.sendJson(res, 200, { success: true, redirect: target });
+      return this.redirectHtml(res, target || '/', 302);
+    };
+
+    this.addRoute(logoutMethod, logoutPath, logoutHandler);
+    if (logoutMethod !== 'GET') {
+      this.addRoute('GET', logoutPath, logoutHandler);
     }
   }
 
@@ -449,6 +801,42 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
     return null;
   }
 
+  resolveRedirectTarget(req, preferred, options = {}) {
+    const allowList = Array.isArray(options.allowList) ? options.allowList.filter(Boolean) : [];
+    const fallback = typeof options.fallback === 'string' ? options.fallback : '/';
+
+    const tryNormalize = (value) => {
+      if (!value) return null;
+      const raw = String(value).trim();
+      if (!raw) return null;
+      if (raw.startsWith('//')) return null;
+
+      if (/^https?:\/\//i.test(raw)) {
+        try {
+          const parsed = new URL(raw);
+          const allowedOrigins = new Set(allowList);
+          if (req && req.headers && req.headers.host) {
+            const host = req.headers.host;
+            allowedOrigins.add(`http://${host}`);
+            allowedOrigins.add(`https://${host}`);
+          }
+          if (this.allowedOrigins.includes('*')) {
+            const originHeader = req && req.headers && req.headers.origin;
+            if (originHeader) allowedOrigins.add(originHeader);
+          }
+          if (allowedOrigins.has(parsed.origin)) return parsed.toString();
+        } catch (_) {
+          return null;
+        }
+        return null;
+      }
+
+      return raw.startsWith('/') ? raw : `/${raw}`;
+    };
+
+    return tryNormalize(preferred) || tryNormalize(fallback) || '/';
+  }
+
   // ---------- helpers for index.html CSP / hoist ----------
   /**
    * convert inline style attributes into class names and build a style block (returns new html)
@@ -502,15 +890,52 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
   }
 
   _addNonceToScriptAndStyleTags(html, nonce) {
-    html = html.replace(/<script\b([^>]*)>/gi, (match, attrs) => {
-      if (/nonce\s*=\s*['"]?[\w+/=.-]+['"]?/i.test(attrs)) return `<script${attrs}>`;
-      return `<script nonce="${nonce}"${attrs}>`;
+    const scriptHashes = new Set();
+    const styleHashes = new Set();
+
+    html = html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (match, attrs = '', content = '') => {
+      const hasNonce = /nonce\s*=\s*['"][^'"]+['"]/i.test(attrs);
+      const finalAttrs = hasNonce ? attrs : `${attrs} nonce="${nonce}"`;
+      const trimmed = content.trim();
+      if (trimmed) {
+        const hash = crypto.createHash('sha256').update(trimmed).digest('base64');
+        scriptHashes.add(`'sha256-${hash}'`);
+      }
+      return `<script${finalAttrs}>${content}</script>`;
     });
-    html = html.replace(/<style\b([^>]*)>/gi, (match, attrs) => {
-      if (/nonce\s*=\s*['"]?[\w+/=.-]+['"]?/i.test(attrs)) return `<style${attrs}>`;
-      return `<style nonce="${nonce}"${attrs}>`;
+
+    html = html.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (match, attrs = '', content = '') => {
+      const hasNonce = /nonce\s*=\s*['"][^'"]+['"]/i.test(attrs);
+      const finalAttrs = hasNonce ? attrs : `${attrs} nonce="${nonce}"`;
+      const trimmed = content.trim();
+      if (trimmed) {
+        const hash = crypto.createHash('sha256').update(trimmed).digest('base64');
+        styleHashes.add(`'sha256-${hash}'`);
+      }
+      return `<style${finalAttrs}>${content}</style>`;
     });
-    return html;
+
+    return {
+      html,
+      scriptHashes: Array.from(scriptHashes),
+      styleHashes: Array.from(styleHashes)
+    };
+  }
+
+  _prepareHtmlForResponse(html) {
+    const nonce = crypto.randomBytes(32).toString('base64');
+    let processed = this._hoistInlineStylesAndStripEvents(html, nonce);
+    const { html: withNonces, scriptHashes, styleHashes } = this._addNonceToScriptAndStyleTags(processed, nonce);
+    return { html: withNonces, nonce, scriptHashes, styleHashes };
+  }
+
+  _statusFromGraphErrors(errors) {
+    if (!Array.isArray(errors) || errors.length === 0) return 200;
+    const messages = errors.map(err => (err && err.message) ? String(err.message) : '');
+    if (messages.some(msg => /authentication required/i.test(msg))) return 401;
+    if (messages.some(msg => /forbidden/i.test(msg))) return 403;
+    if (messages.some(msg => /not found|geçersiz|unknown field|missing/i.test(msg))) return 400;
+    return 400;
   }
 
   async _authenticateRequest(req, res, route) {
@@ -528,7 +953,8 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
 
     if (!token) {
       if (route.options.redirect && (req.headers.accept || '').includes('text/html')) {
-        this.redirectHtml(res, route.options.redirect);
+        const safe = this.resolveRedirectTarget(req, route.options.redirect, { fallback: '/', allowList: [] });
+        this.redirectHtml(res, safe);
         return null;
       }
       this.sendJson(res, 401, { success: false, message: 'Unauthorized' });
@@ -543,7 +969,8 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
     const verified = await this.authService.verifyJWT(token);
     if (!verified) {
       if (route.options.redirect && (req.headers.accept || '').includes('text/html')) {
-        this.redirectHtml(res, route.options.redirect);
+        const safe = this.resolveRedirectTarget(req, route.options.redirect, { fallback: '/', allowList: [] });
+        this.redirectHtml(res, safe);
         return null;
       }
       this.sendJson(res, 401, { success: false, message: 'Invalid token' });
@@ -590,21 +1017,16 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
 
       const route = this.findRoute(req.method, pathname);
       if (!route) {
-        // fallback index.html
+        // fallback HTML pages
         if (req.method === 'GET') {
-          const indexFile = this._safeJoin(this.publicPath, 'index.html');
-          if (indexFile && fs.existsSync(indexFile)) {
-            let html = fs.readFileSync(indexFile, 'utf8');
-            const nonce = crypto.randomBytes(16).toString('base64');
-
-            // 1) move inline style attrs into a nonce'd <style>
-            html = this._hoistInlineStylesAndStripEvents(html, nonce);
-
-            // 2) add nonce to existing <script> and <style> tags
-            html = this._addNonceToScriptAndStyleTags(html, nonce);
-
-            // 3) send html with CSP referencing nonce
-            return this.sendHtml(res, 200, html, nonce);
+          const htmlFile = this._resolveHtmlFile(pathname);
+          if (htmlFile) {
+            const rawHtml = fs.readFileSync(htmlFile, 'utf8');
+            const prepared = this._prepareHtmlForResponse(rawHtml);
+            return this.sendHtml(res, 200, prepared.html, prepared.nonce, {}, req, {
+              scripts: prepared.scriptHashes,
+              styles: prepared.styleHashes
+            });
           }
         }
         return this.sendJson(res, 404, { success:false, message:'Not found' });
@@ -618,13 +1040,19 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
         const authHeader = req.headers['authorization'] || '';
         const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : (this._getCookie(req, 'auth_token') || authHeader || '');
         if (!token) {
-          if (route.options.redirect && (req.headers.accept || '').includes('text/html')) return this.redirectHtml(res, route.options.redirect);
+          if (route.options.redirect && (req.headers.accept || '').includes('text/html')) {
+            const safeRedirect = this.resolveRedirectTarget(req, route.options.redirect, { fallback: '/', allowList: [] });
+            return this.redirectHtml(res, safeRedirect);
+          }
           return this.sendJson(res, 401, { success:false, message:'Unauthorized' });
         }
         if (!this.authService) return this.sendJson(res, 500, { success:false, message:'AuthService missing' });
         const verified = await this.authService.verifyJWT(token);
         if (!verified) {
-          if (route.options.redirect && (req.headers.accept || '').includes('text/html')) return this.redirectHtml(res, route.options.redirect);
+          if (route.options.redirect && (req.headers.accept || '').includes('text/html')) {
+            const safeRedirect = this.resolveRedirectTarget(req, route.options.redirect, { fallback: '/', allowList: [] });
+            return this.redirectHtml(res, safeRedirect);
+          }
           return this.sendJson(res, 401, { success:false, message:'Invalid token' });
         }
         user = verified.user || verified.payload || verified;
@@ -670,7 +1098,10 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
           const maybe = route.handler.length >= 3 ? await route.handler(req, res, wrappedSend) : await route.handler(req, res, wrappedSend);
           if (handled) return;
           if (maybe === true || (maybe && maybe.redirect === true)) {
-            const loc = (maybe && maybe.location) || (route.options && route.options.redirect) || '/';
+            const loc = this.resolveRedirectTarget(req, maybe && maybe.location, {
+              fallback: (route.options && route.options.redirect) || '/',
+              allowList: []
+            });
             if ((req.headers.accept || '').includes('text/html')) return this.redirectHtml(res, loc);
             return this.sendJson(res, 204, { success:true, redirect: loc });
           }
@@ -716,7 +1147,10 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
       if (handled) return;
 
       if (maybe === true || (maybe && maybe.redirect === true)) {
-        const loc = (maybe && maybe.location) || (route.options && route.options.redirect) || '/';
+        const loc = this.resolveRedirectTarget(req, maybe && maybe.location, {
+          fallback: (route.options && route.options.redirect) || '/',
+          allowList: []
+        });
         if ((req.headers.accept || '').includes('text/html')) return this.redirectHtml(res, loc);
         return this.sendJson(res, 204, { success:true, redirect: loc });
       }
