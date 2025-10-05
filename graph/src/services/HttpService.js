@@ -505,21 +505,23 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
   }
 
   async _authenticateRequest(req, res, route) {
-    // 1) Authorization header → Bearer
+    const opts = route && route.options ? route.options : {};
+
     let token = null;
     const authHeader = req.headers['authorization'] || '';
     if (authHeader.startsWith('Bearer ')) {
       token = authHeader.slice(7);
+    } else if (authHeader) {
+      token = authHeader;
     }
 
-    // 2) Cookie fallback
     if (!token) {
       token = this._getCookie(req, 'auth_token');
     }
 
     if (!token) {
-      if (route.options.redirect && (req.headers.accept || '').includes('text/html')) {
-        this.redirectHtml(res, route.options.redirect);
+      if (opts.redirect && (req.headers.accept || '').includes('text/html')) {
+        this.redirectHtml(res, opts.redirect);
         return null;
       }
       this.sendJson(res, 401, { success: false, message: 'Unauthorized' });
@@ -531,10 +533,16 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
       return null;
     }
 
-    const verified = await this.authService.verifyJWT(token);
+    let verified;
+    try {
+      verified = await this.authService.verifyJWT(token);
+    } catch (e) {
+      verified = null;
+    }
+
     if (!verified) {
-      if (route.options.redirect && (req.headers.accept || '').includes('text/html')) {
-        this.redirectHtml(res, route.options.redirect);
+      if (opts.redirect && (req.headers.accept || '').includes('text/html')) {
+        this.redirectHtml(res, opts.redirect);
         return null;
       }
       this.sendJson(res, 401, { success: false, message: 'Invalid token' });
@@ -543,10 +551,9 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
 
     const user = verified.user || verified.payload || verified;
 
-    // role check
-    if (route.options.roles) {
-      const allowed = Array.isArray(route.options.roles) ? route.options.roles : [route.options.roles];
-      const has = (user && (allowed.includes(user.role) || (user.roles && user.roles.some(r => allowed.includes(r)))));
+    if (opts.roles) {
+      const allowed = Array.isArray(opts.roles) ? opts.roles : [opts.roles];
+      const has = (user && (allowed.includes(user.role) || (Array.isArray(user.roles) && user.roles.some(r => allowed.includes(r)))));
       if (!has) {
         this.sendJson(res, 403, { success: false, message: 'Forbidden' });
         return null;
@@ -568,10 +575,14 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
       }
 
       const ip = this._getIp(req);
+      req.ip = ip;
       if (this._globalRateCheck(ip)) return this.sendJson(res, 429, { success:false, message:'Too many requests' });
 
       const parsed = url.parse(req.url || '', true);
       const pathname = decodeURIComponent(parsed.pathname || '/');
+      req.query = parsed.query || {};
+      req.path = pathname;
+      if (!req.originalUrl) req.originalUrl = req.url;
 
       // static assets
       if (pathname.startsWith('/assets/')) {
@@ -605,26 +616,10 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
 
       // -------- auth (route-level) --------
       let user = null;
-      if (route.options && route.options.auth) {
-        const authHeader = req.headers['authorization'] || '';
-        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : (this._getCookie(req, 'auth_token') || authHeader || '');
-        if (!token) {
-          if (route.options.redirect && (req.headers.accept || '').includes('text/html')) return this.redirectHtml(res, route.options.redirect);
-          return this.sendJson(res, 401, { success:false, message:'Unauthorized' });
-        }
-        if (!this.authService) return this.sendJson(res, 500, { success:false, message:'AuthService missing' });
-        const verified = await this.authService.verifyJWT(token);
-        if (!verified) {
-          if (route.options.redirect && (req.headers.accept || '').includes('text/html')) return this.redirectHtml(res, route.options.redirect);
-          return this.sendJson(res, 401, { success:false, message:'Invalid token' });
-        }
-        user = verified.user || verified.payload || verified;
-        // role check
-        if (route.options.roles) {
-          const allowed = Array.isArray(route.options.roles) ? route.options.roles : [route.options.roles];
-          const has = (user && (allowed.includes(user.role) || (user.roles && user.roles.some(r=>allowed.includes(r)))));
-          if (!has) return this.sendJson(res, 403, { success:false, message:'Forbidden' });
-        }
+      const needsAuth = route.options && (route.options.auth || (route.options.roles && route.options.roles.length));
+      if (needsAuth) {
+        user = await this._authenticateRequest(req, res, route);
+        if (!user) return;
       }
 
       if (route.path.includes('/:')) req.params = this.extractParams(route.path, pathname);
@@ -689,6 +684,9 @@ sendHtml(res, statusCode, html, nonce = null, extraHeaders = {}, req = null) {
           try { req.body = collected.raw ? JSON.parse(collected.raw) : {}; } catch {
             req.body = { query: collected.raw };
           }
+        }
+        if (req.body && typeof req.body.variables === 'string') {
+          try { req.body.variables = JSON.parse(req.body.variables); } catch (e) {}
         }
       } else {
         try {

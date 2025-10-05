@@ -1,170 +1,347 @@
 'use strict';
 
-// AST value -> JS
-function astToJS(v) {
-  switch (v.kind) {
-    case 'StringValue': case 'IntValue': case 'FloatValue':
-    case 'BooleanValue': return v.value;
-    case 'NullValue': return null;
-    case 'EnumValue': return v.value;
-    case 'ListValue': return v.values.map(astToJS);
+function astToJS(v, variables = {}) {
+  switch (v?.kind) {
+    case 'StringValue':
+    case 'IntValue':
+    case 'FloatValue':
+    case 'BooleanValue':
+      return v.value;
+    case 'NullValue':
+      return null;
+    case 'EnumValue':
+      return v.value;
+    case 'Variable': {
+      const name = typeof v.name === 'string' ? v.name : v.name?.value;
+      return variables && Object.prototype.hasOwnProperty.call(variables, name)
+        ? variables[name]
+        : undefined;
+    }
+    case 'ListValue':
+      return Array.isArray(v.values) ? v.values.map(item => astToJS(item, variables)) : [];
     case 'ObjectValue': {
-      const o = {}; for (const f of v.fields) o[f.name] = astToJS(f.value); return o;
+      const o = {};
+      for (const f of v.fields || []) o[f.name] = astToJS(f.value, variables);
+      return o;
     }
   }
   return null;
 }
-function isObj(x) { return x && typeof x === 'object' && !Array.isArray(x); }
 
-/**
- * permission check helpers
- * - fieldMeta: object possibly containing { auth, roles }
- * - args: parsed args object for the field
- * - ctx: contextValue passed into execute (expect ctx.req and ctx.user available)
- */
-function checkPermissions(fieldMeta, args, ctx) {
-  // no meta -> allow
-  if (!fieldMeta) return;
+function isObj(x) {
+  return x && typeof x === 'object' && !Array.isArray(x);
+}
 
-  const req = ctx && ctx.req;
-  const user = ctx && ctx.user;
+function unwrapTypeName(type) {
+  if (!type || typeof type !== 'string') return null;
+  return type.replace(/[[\]!]/g, '').trim() || null;
+}
 
-  // auth required
-  if (fieldMeta.auth) {
-    if (!user) throw new Error('Authentication required');
+function getRuntimeType(value, fallback) {
+  if (value && typeof value === 'object') {
+    if (typeof value.__typename === 'string') return value.__typename;
+    if (typeof value.__type === 'string') return value.__type;
   }
+  return fallback || null;
+}
 
-  // role check (roles: ['admin', 'moderator'])
+function shouldIncludeNode(node, variables) {
+  if (!node || !Array.isArray(node.directives) || !node.directives.length) return true;
+  for (const dir of node.directives) {
+    if (!dir || dir.kind !== 'Directive') continue;
+    const name = dir.name;
+    if (name !== 'skip' && name !== 'include') continue;
+    const ifArg = (dir.arguments || []).find(arg => arg.name === 'if');
+    const value = astToJS(ifArg?.value, variables);
+    if (name === 'skip' && value === true) return false;
+    if (name === 'include' && value === false) return false;
+  }
+  return true;
+}
+
+function matchesTypeCondition(condition, typeName, value) {
+  if (!condition) return true;
+  const runtime = getRuntimeType(value, typeName);
+  if (!runtime) return false;
+  return runtime === condition;
+}
+
+function checkPermissions(fieldMeta, args, ctx) {
+  if (!fieldMeta) return;
+  const user = ctx && ctx.user;
+  if (fieldMeta.auth && !user) {
+    throw new Error('Authentication required');
+  }
   if (Array.isArray(fieldMeta.roles) && fieldMeta.roles.length) {
     if (!user) throw new Error('Authentication required for role check');
-    const hasRole = fieldMeta.roles.includes(user.role) || (Array.isArray(user.roles) && user.roles.some(r => fieldMeta.roles.includes(r)));
+    const hasRole = fieldMeta.roles.includes(user.role)
+      || (Array.isArray(user.roles) && user.roles.some(r => fieldMeta.roles.includes(r)));
     if (!hasRole) throw new Error('Forbidden: insufficient role');
   }
 }
 
-/**
- * execute({ schema, document, contextValue })
- * - schema: your existing schema object where fields may be either:
- *   - a function/object { resolve: fn, ...meta } or
- *   - a direct resolver function (old style)
- * - contextValue: make sure you set contextValue.user = req.user in your /graphql handler
- */
-async function execute({ schema, document, contextValue = {} }) {
-  const op = document.definitions[0];
-  const root = op.operation === 'mutation' ? schema.Mutation : schema.Query;
-  if (!root) return { data: null, errors: [{ message: `Missing root type` }] };
-
-  const data = {};
-  const errors = [];
-
-  for (const sel of op.selectionSet.selections) {
-    const key = sel.alias || sel.name;
-    try {
-      const fieldDef = root[sel.name];
-      if (!fieldDef) throw new Error(`Unknown field "${sel.name}"`);
-
-      // normalize: fieldDef can be a function (resolver) or an object { resolve, auth, roles }
-      let resolver = null;
-      let meta = null;
-      if (typeof fieldDef === 'function') {
-        resolver = fieldDef;
-      } else if (typeof fieldDef === 'object') {
-        // If fieldDef has a .resolve, use it; otherwise if it's a plain object but callable? handle.
-        resolver = (typeof fieldDef.resolve === 'function') ? fieldDef.resolve : null;
-        // extract meta keys (auth, roles)
-        meta = {
-          auth: fieldDef.auth || false,
-          roles: Array.isArray(fieldDef.roles) ? fieldDef.roles : (fieldDef.roles ? [fieldDef.roles] : []),
-        };
-      } else {
-        throw new Error(`Invalid field definition for "${sel.name}"`);
-      }
-
-      // collect arguments
-      const args = {};
-      for (const a of sel.arguments || []) args[a.name] = astToJS(a.value);
-
-      // Permission check BEFORE resolver runs
-      try {
-        checkPermissions(meta, args, contextValue);
-      } catch (permErr) {
-        throw permErr;
-      }
-
-      // call resolver (some resolvers might not exist and return undefined)
-      const result = await (resolver ? resolver(null, args, contextValue, { fieldName: sel.name, selectionSet: sel.selectionSet }) : undefined);
-
-      if (sel.selectionSet) {
-        if (Array.isArray(result)) {
-          data[key] = [];
-          for (const item of result) {
-            data[key].push(await resolveSelectionSet(schema, item, sel.selectionSet, contextValue));
-          }
-        } else if (isObj(result) || result == null) {
-          data[key] = result == null ? null : await resolveSelectionSet(schema, result, sel.selectionSet, contextValue);
-        } else {
-          throw new Error(`Subselection requires object/list result for "${sel.name}"`);
-        }
-      } else {
-        data[key] = result;
-      }
-    } catch (e) {
-      data[key] = null;
-      errors.push({ message: e.message, path: [key] });
+function collectFields(selectionSet, typeName, sourceValue, fragments, variables, visited, out) {
+  for (const selection of selectionSet.selections || []) {
+    if (!shouldIncludeNode(selection, variables)) continue;
+    if (selection.kind === 'Field') {
+      out.push(selection);
+      continue;
     }
+    if (selection.kind === 'InlineFragment') {
+      if (!matchesTypeCondition(selection.typeCondition, typeName, sourceValue)) continue;
+      collectFields(selection.selectionSet, selection.typeCondition || typeName, sourceValue, fragments, variables, visited, out)
+;
+      continue;
+    }
+    if (selection.kind === 'FragmentSpread') {
+      const name = typeof selection.name === 'string' ? selection.name : selection.name?.value;
+      if (!name) continue;
+      if (visited.has(name)) continue;
+      visited.add(name);
+      const fragment = fragments[name];
+      if (!fragment) throw new Error(`Unknown fragment "${name}"`);
+      if (!shouldIncludeNode(fragment, variables)) continue;
+      if (!matchesTypeCondition(fragment.typeCondition, typeName, sourceValue)) continue;
+      collectFields(fragment.selectionSet, fragment.typeCondition || typeName, sourceValue, fragments, variables, visited, out);
+    }
+  }
+}
+
+async function execute({
+  schema,
+  document,
+  contextValue = {},
+  variableValues = {},
+  operationName = null,
+  rootValue = null
+}) {
+  if (!document || !Array.isArray(document.definitions)) {
+    throw new Error('Invalid GraphQL document');
+  }
+
+  const fragments = Object.create(null);
+  const operations = [];
+  for (const def of document.definitions) {
+    if (def.kind === 'FragmentDefinition') {
+      fragments[def.name] = def;
+    } else if (def.kind === 'OperationDefinition') {
+      operations.push(def);
+    }
+  }
+
+  let operation = null;
+  if (operationName) {
+    operation = operations.find(op => op.name === operationName || op.name?.value === operationName) || null;
+    if (!operation) {
+      return { data: null, errors: [{ message: `Unknown operation "${operationName}"` }] };
+    }
+  } else if (operations.length === 1) {
+    operation = operations[0];
+  } else if (operations.length === 0) {
+    return { data: null, errors: [{ message: 'No operation found in document' }] };
+  } else {
+    return { data: null, errors: [{ message: 'Must provide operationName when document contains multiple operations.' }] };
+  }
+
+  const rootTypeName = operation.operation === 'mutation'
+    ? 'Mutation'
+    : operation.operation === 'subscription'
+      ? 'Subscription'
+      : 'Query';
+  const rootType = schema && schema[rootTypeName];
+  if (!rootType) {
+    return { data: null, errors: [{ message: `Missing root type "${rootTypeName}"` }] };
+  }
+
+  const providedVars = Object.assign({}, variableValues || {});
+  const prepErrors = [];
+  for (const def of operation.variableDefinitions || []) {
+    const varName = typeof def.variable?.name === 'string' ? def.variable.name : def.variable?.name?.value;
+    if (!Object.prototype.hasOwnProperty.call(providedVars, varName)) {
+      if (def.defaultValue !== undefined) {
+        providedVars[varName] = astToJS(def.defaultValue, providedVars);
+      } else if (def.type && def.type.nonNull) {
+        prepErrors.push({ message: `Variable "${varName}" of required type is missing.` });
+      } else {
+        providedVars[varName] = undefined;
+      }
+    }
+  }
+  if (prepErrors.length) {
+    return { data: null, errors: prepErrors };
+  }
+
+  const execCtx = Object.assign({}, contextValue, {
+    variables: providedVars,
+    operation,
+    operationName: operation.name || operationName || null
+  });
+
+  const errors = [];
+  let data = Object.create(null);
+  try {
+    data = await executeSelectionSet({
+      schema,
+      selectionSet: operation.selectionSet,
+      typeName: rootTypeName,
+      typeDefs: rootType,
+      source: rootValue,
+      ctx: execCtx,
+      variables: providedVars,
+      fragments,
+      errors
+    });
+  } catch (e) {
+    errors.push({ message: e.message });
   }
 
   return errors.length ? { data, errors } : { data };
 }
 
-async function resolveSelectionSet(schema, parent, selectionSet, ctx) {
-  const out = {};
-  for (const sel of selectionSet.selections) {
-    const key = sel.alias || sel.name;
+async function executeSelectionSet({
+  schema,
+  selectionSet,
+  typeName,
+  typeDefs,
+  source,
+  ctx,
+  variables,
+  fragments,
+  errors
+}) {
+  const result = {};
+  const visited = new Set();
+  const collected = [];
+  collectFields(selectionSet, typeName, source, fragments, variables, visited, collected);
 
-    // decide resolver: either type-specific resolver in schema.types or a default property access
-    const resolver = parent.__type && schema.types?.[parent.__type]?.[sel.name]
-      ? schema.types[parent.__type][sel.name].resolve
-      : (obj => obj[sel.name]);
-
-    // collect args
-    const args = {};
-    for (const a of sel.arguments || []) args[a.name] = (a.value ? (a.value.value ?? null) : null);
-
-    // If the resolver is an object with meta, handle permission checks similarly
-    let meta = null;
-    let actualResolver = null;
-    if (typeof resolver === 'function') actualResolver = resolver;
-    else if (resolver && typeof resolver === 'object') {
-      actualResolver = typeof resolver.resolve === 'function' ? resolver.resolve : null;
-      meta = {
-        auth: resolver.auth || false,
-        roles: Array.isArray(resolver.roles) ? resolver.roles : (resolver.roles ? [resolver.roles] : []),
-      };
+  for (const fieldNode of collected) {
+    const responseKey = fieldNode.alias || fieldNode.name;
+    if (Object.prototype.hasOwnProperty.call(result, responseKey)) continue;
+    try {
+      result[responseKey] = await resolveField({
+        schema,
+        fieldNode,
+        typeName,
+        typeDefs,
+        source,
+        ctx,
+        variables,
+        fragments,
+        errors
+      });
+    } catch (e) {
+      result[responseKey] = null;
+      errors.push({ message: e.message, path: [responseKey] });
     }
-
-    // permission check for field-level type resolvers (optional)
-    if (meta) {
-      try {
-        checkPermissions(meta, args, ctx);
-      } catch (permErr) {
-        out[key] = null;
-        continue;
-      }
-    }
-
-    const res = await (actualResolver ? actualResolver(parent, args, ctx, { fieldName: sel.name, selectionSet: sel.selectionSet }) : (parent ? parent[sel.name] : null));
-    if (sel.selectionSet) {
-      if (Array.isArray(res)) {
-        const arr = [];
-        for (const item of res) arr.push(await resolveSelectionSet(schema, item, sel.selectionSet, ctx));
-        out[key] = arr;
-      } else if (res && typeof res === 'object') {
-        out[key] = await resolveSelectionSet(schema, res, sel.selectionSet, ctx);
-      } else out[key] = res ?? null;
-    } else out[key] = res;
   }
-  return out;
+
+  return result;
+}
+
+async function resolveField({ schema, fieldNode, typeName, typeDefs, source, ctx, variables, fragments, errors }) {
+  const fieldName = fieldNode.name;
+  const fieldDef = typeDefs ? typeDefs[fieldName] : undefined;
+  let resolver = null;
+  let meta = null;
+  let typeHint = null;
+
+  if (typeof fieldDef === 'function') {
+    resolver = fieldDef;
+  } else if (fieldDef && typeof fieldDef === 'object') {
+    resolver = typeof fieldDef.resolve === 'function' ? fieldDef.resolve : null;
+    meta = {
+      auth: !!fieldDef.auth,
+      roles: Array.isArray(fieldDef.roles)
+        ? fieldDef.roles
+        : (fieldDef.roles ? [fieldDef.roles] : [])
+    };
+    if (fieldDef.type) typeHint = fieldDef.type;
+  } else if (fieldDef !== undefined) {
+    throw new Error(`Invalid field definition for "${fieldName}" on type "${typeName}"`);
+  }
+
+  if (!fieldDef && (typeName === 'Query' || typeName === 'Mutation' || typeName === 'Subscription')) {
+    throw new Error(`Unknown field "${fieldName}" on root type "${typeName}"`);
+  }
+
+  const args = {};
+  for (const arg of fieldNode.arguments || []) {
+    args[arg.name] = astToJS(arg.value, variables);
+  }
+
+  if (meta) {
+    checkPermissions(meta, args, ctx);
+  }
+
+  const info = {
+    fieldName,
+    parentType: typeName,
+    selectionSet: fieldNode.selectionSet,
+    returnType: typeHint
+  };
+
+  let resolved;
+  if (resolver) {
+    resolved = await resolver(source, args, ctx, info);
+  } else if (isObj(source) && Object.prototype.hasOwnProperty.call(source, fieldName)) {
+    resolved = source[fieldName];
+  } else if (source != null && typeof source === 'object') {
+    resolved = source[fieldName];
+  } else {
+    resolved = undefined;
+  }
+
+  return completeValue({
+    schema,
+    fieldNode,
+    value: resolved,
+    ctx,
+    variables,
+    fragments,
+    errors,
+    typeHint
+  });
+}
+
+async function completeValue({ schema, fieldNode, value, ctx, variables, fragments, errors, typeHint }) {
+  if (!fieldNode.selectionSet) return value;
+  if (value == null) return null;
+
+  if (Array.isArray(value)) {
+    const results = [];
+    for (const item of value) {
+      results.push(await completeValue({
+        schema,
+        fieldNode,
+        value: item,
+        ctx,
+        variables,
+        fragments,
+        errors,
+        typeHint
+      }));
+    }
+    return results;
+  }
+
+  if (!isObj(value)) {
+    throw new Error(`Subselection requires object/list result for "${fieldNode.name}"`);
+  }
+
+  const nextTypeName = getRuntimeType(value, unwrapTypeName(typeHint));
+  const nextTypeDefs = nextTypeName && schema.types ? schema.types[nextTypeName] : undefined;
+
+  return executeSelectionSet({
+    schema,
+    selectionSet: fieldNode.selectionSet,
+    typeName: nextTypeName,
+    typeDefs: nextTypeDefs,
+    source: value,
+    ctx,
+    variables,
+    fragments,
+    errors
+  });
 }
 
 module.exports = { execute };
