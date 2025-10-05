@@ -1,0 +1,16 @@
+[
+  { "bit": 0,  "name": "VIEW",            "label_tr": "Görüntüleme",        "desc_tr": "Kaynağı görüntüme (read-only)." },
+  { "bit": 1,  "name": "READ",            "label_tr": "Okuma",              "desc_tr": "Veri okuma / sorgulama izni." },
+  { "bit": 2,  "name": "WRITE",           "label_tr": "Yazma",              "desc_tr": "Yeni veri oluşturma veya düzenleme." },
+  { "bit": 3,  "name": "DELETE",          "label_tr": "Silme",              "desc_tr": "Veri silme izni." },
+  { "bit": 4,  "name": "CREATE",          "label_tr": "Oluşturma",          "desc_tr": "Yeni kaynak oluşturma." },
+  { "bit": 5,  "name": "EXECUTE",         "label_tr": "Çalıştırma",         "desc_tr": "Komut / işlem çalıştırma yetkisi." },
+  { "bit": 6,  "name": "MANAGE_USERS",    "label_tr": "Kullanıcı Yönetimi", "desc_tr": "Kullanıcı ekleme/silme/rol verme." },
+  { "bit": 7,  "name": "MANAGE_ROLES",    "label_tr": "Rol Yönetimi",       "desc_tr": "Rol oluşturma/düzenleme yetkisi." },
+  { "bit": 8,  "name": "MANAGE_SETTINGS", "label_tr": "Ayar Yönetimi",      "desc_tr": "Sistem/servis ayarlarını değiştirme." },
+  { "bit": 9,  "name": "PUBLISH",         "label_tr": "Yayınlama",          "desc_tr": "İçerik veya değişiklikleri yayınlama." },
+  { "bit": 10, "name": "SCHEDULE",        "label_tr": "Zamanlama",          "desc_tr": "İş/işlem zamanlama yetkisi." },
+  { "bit": 11, "name": "ARCHIVE",         "label_tr": "Arşivleme",          "desc_tr": "Veriyi arşivleme / arşivden geri getirme." },
+  { "bit": 12, "name": "EXPORT",          "label_tr": "Dışa Aktarım",       "desc_tr": "Veriyi dışa aktarma (rapor, csv vb.)." },
+  { "bit": 13, "name": "ADMIN",           "label_tr": "Yönetici (ADMIN)",    "desc_tr": "Tüm kritik işlemleri yapma (üst seviye)." }
+]

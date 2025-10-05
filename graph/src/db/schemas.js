@@ -41,6 +41,7 @@ const SCHEMAS = {
       passwordHash: { type: 'String' },
       role: { type: 'String', default: 'user' },
       verified: { type: 'Boolean', default: false },
+      permissionId: { type: 'Int', default: 0 },
       authProvider: { type: 'String' },
       microsoftId: { type: 'String' },
       microsoftObjectId: { type: 'String' },

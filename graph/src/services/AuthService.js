@@ -6,6 +6,9 @@ const fs = require('fs').promises;
 const path = require('path');
 const { URL } = require('url');
 
+const DEFAULT_USER_PERMISSIONS = (1 << 0) | (1 << 1);
+const ADMIN_PERMISSIONS = 0x3FFF;
+
 class AuthService {
   constructor(opts = {}) {
     this.db = opts.db;
@@ -56,6 +59,14 @@ class AuthService {
     const cleanupMs = opts.tokenCleanupIntervalMs || 1000 * 60 * 60;
     this._cleanupHandle = setInterval(() => this._cleanupExpiredTokens(), cleanupMs);
     this._cleanupHandle.unref && this._cleanupHandle.unref();
+  }
+
+  _permissionForRole(role, existingPermissionId = null) {
+    if (role === 'admin') return ADMIN_PERMISSIONS;
+    if (typeof existingPermissionId === 'number' && existingPermissionId > 0) {
+      return existingPermissionId;
+    }
+    return DEFAULT_USER_PERMISSIONS;
   }
 
   // -------------------------
@@ -411,11 +422,13 @@ class AuthService {
       const displayParts = display ? display.split(/\s+/) : [];
       const given = profile.givenName || displayParts[0] || email;
       const family = profile.surname || (displayParts.length > 1 ? displayParts.slice(1).join(' ') : '');
+      const permissionId = this._permissionForRole('user');
       user = await this.db.insert('users', {
         email,
         name: given,
         surname: family,
         role: 'user',
+        permissionId,
         passwordHash: 'microsoft-oauth',
         verified: true,
         authProvider: 'microsoft',
@@ -427,6 +440,7 @@ class AuthService {
         verified: true,
         authProvider: provider
       });
+      patch.permissionId = this._permissionForRole(user.role || 'user', user.permissionId);
       if (!user.name) {
         const display = typeof profile.displayName === 'string' ? profile.displayName.trim() : '';
         if (profile.givenName) patch.name = profile.givenName;
@@ -621,6 +635,18 @@ class AuthService {
     }
 
     if (!user) return null;
+
+    if (user && (user.permissionId == null || user.permissionId < 0)) {
+      const normalized = this._permissionForRole(user.role || 'user', user.permissionId);
+      if (this.db && normalized !== user.permissionId) {
+        try {
+          const updated = await this.db.update('users', user.id, { permissionId: normalized });
+          if (updated) user = updated;
+        } catch (_) {}
+      } else {
+        user.permissionId = normalized;
+      }
+    }
 
     return { user, payload };
   }
