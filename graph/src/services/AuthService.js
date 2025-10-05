@@ -1,8 +1,10 @@
 'use strict';
 
 const crypto = require('crypto');
+const https = require('https');
 const fs = require('fs').promises;
 const path = require('path');
+const { URL } = require('url');
 
 class AuthService {
   constructor(opts = {}) {
@@ -26,6 +28,22 @@ class AuthService {
 
     this.emailSendWindow = opts.emailSendWindow || 1000 * 60 * 10; // 10 dk
     this.lastEmailSends = new Map(); // userId -> { type, token, sentAt }
+
+    const microsoftOpts = Object.assign({}, opts.microsoft || {});
+    this.microsoft = {
+      tenantId: microsoftOpts.tenantId || opts.microsoftTenantId || 'common',
+      clientId: microsoftOpts.clientId || opts.microsoftClientId || null,
+      clientSecret: microsoftOpts.clientSecret || opts.microsoftClientSecret || null,
+      redirectUri: microsoftOpts.redirectUri || opts.microsoftRedirectUri || null,
+      scope: Array.isArray(microsoftOpts.scope)
+        ? microsoftOpts.scope
+        : String(microsoftOpts.scope || opts.microsoftScope || 'openid profile email offline_access User.Read')
+            .split(/\s+/)
+            .filter(Boolean),
+      authorityHost: microsoftOpts.authorityHost || 'https://login.microsoftonline.com',
+      graphHost: microsoftOpts.graphHost || 'https://graph.microsoft.com',
+      timeoutMs: microsoftOpts.timeoutMs || 10_000
+    };
 
     const cleanupMs = opts.tokenCleanupIntervalMs || 1000 * 60 * 60;
     this._cleanupHandle = setInterval(() => this._cleanupExpiredTokens(), cleanupMs);
@@ -66,6 +84,246 @@ class AuthService {
   }
 
   // -------------------------
+  // Microsoft OAuth helpers
+  // -------------------------
+  microsoftConfigValid() {
+    return Boolean(this.microsoft && this.microsoft.clientId && this.microsoft.redirectUri);
+  }
+
+  _assertMicrosoftConfig() {
+    if (!this.microsoftConfigValid()) {
+      throw new Error('Microsoft OAuth yapılandırması eksik (clientId veya redirectUri tanımlı değil).');
+    }
+  }
+
+  buildMicrosoftState(payload = {}) {
+    try {
+      const base = Object.assign({ ts: Date.now() }, payload || {});
+      return Buffer.from(JSON.stringify(base), 'utf8').toString('base64url');
+    } catch (err) {
+      throw new Error('Microsoft state oluşturulamadı.');
+    }
+  }
+
+  parseMicrosoftState(state) {
+    if (!state) return null;
+    try {
+      const json = Buffer.from(String(state), 'base64url').toString('utf8');
+      return JSON.parse(json);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  buildMicrosoftAuthorizationUrl(options = {}) {
+    this._assertMicrosoftConfig();
+
+    const state = options.state || (options.statePayload ? this.buildMicrosoftState(options.statePayload) : undefined);
+    const authorizeUrl = new URL(`${this.microsoft.authorityHost.replace(/\/$/, '')}/${this.microsoft.tenantId}/oauth2/v2.0/authorize`);
+    const params = new URLSearchParams({
+      client_id: this.microsoft.clientId,
+      response_type: 'code',
+      response_mode: 'query',
+      redirect_uri: this.microsoft.redirectUri,
+      scope: this.microsoft.scope.join(' ')
+    });
+
+    if (state) params.set('state', state);
+    if (options.prompt) params.set('prompt', options.prompt);
+    if (options.loginHint) params.set('login_hint', options.loginHint);
+    if (options.domainHint) params.set('domain_hint', options.domainHint);
+    if (options.codeChallenge) {
+      params.set('code_challenge', options.codeChallenge);
+      params.set('code_challenge_method', options.codeChallengeMethod || 'S256');
+    }
+
+    authorizeUrl.search = params.toString();
+    return { url: authorizeUrl.toString(), state: state || null };
+  }
+
+  _httpsRequest(options, body = null, timeoutMs = null) {
+    return new Promise((resolve, reject) => {
+      const req = https.request({
+        method: options.method || 'GET',
+        hostname: options.hostname,
+        path: options.path,
+        headers: options.headers || {},
+        port: options.port || 443,
+        protocol: options.protocol || 'https:'
+      }, (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const raw = Buffer.concat(chunks).toString('utf8');
+          resolve({ statusCode: res.statusCode || 0, headers: res.headers || {}, body: raw });
+        });
+      });
+
+      req.on('error', reject);
+      const to = timeoutMs || this.microsoft.timeoutMs;
+      if (to) {
+        req.setTimeout(to, () => {
+          req.destroy(new Error('HTTPS isteği zaman aşımına uğradı.'));
+        });
+      }
+
+      if (body) req.write(body);
+      req.end();
+    });
+  }
+
+  async _exchangeMicrosoftCodeForToken(code, codeVerifier) {
+    this._assertMicrosoftConfig();
+    if (!code) throw new Error('Microsoft authorization code gerekli.');
+
+    const tokenUrl = new URL(`${this.microsoft.authorityHost.replace(/\/$/, '')}/${this.microsoft.tenantId}/oauth2/v2.0/token`);
+    const form = new URLSearchParams({
+      client_id: this.microsoft.clientId,
+      scope: this.microsoft.scope.join(' '),
+      redirect_uri: this.microsoft.redirectUri,
+      grant_type: 'authorization_code',
+      code
+    });
+
+    if (this.microsoft.clientSecret) form.set('client_secret', this.microsoft.clientSecret);
+    if (codeVerifier) form.set('code_verifier', codeVerifier);
+
+    const body = form.toString();
+    const response = await this._httpsRequest({
+      method: 'POST',
+      hostname: tokenUrl.hostname,
+      path: tokenUrl.pathname + tokenUrl.search,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body, 'utf8').toString()
+      }
+    }, body);
+
+    let parsed = null;
+    try { parsed = JSON.parse(response.body || '{}'); } catch (err) {
+      throw new Error('Microsoft token yanıtı çözümlenemedi.');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300 || parsed.error) {
+      const message = parsed && (parsed.error_description || parsed.error) ? `${parsed.error}: ${parsed.error_description || ''}`.trim() : `HTTP ${response.statusCode}`;
+      throw new Error(`Microsoft token isteği başarısız: ${message}`);
+    }
+
+    if (!parsed.access_token) throw new Error('Microsoft token yanıtı access_token içermiyor.');
+    return parsed;
+  }
+
+  async _fetchMicrosoftProfile(accessToken) {
+    if (!accessToken) throw new Error('Microsoft access token eksik.');
+    const meUrl = new URL('/v1.0/me', this.microsoft.graphHost);
+
+    const response = await this._httpsRequest({
+      method: 'GET',
+      hostname: meUrl.hostname,
+      path: meUrl.pathname + meUrl.search,
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+
+    let parsed = null;
+    try { parsed = JSON.parse(response.body || '{}'); } catch (err) {
+      throw new Error('Microsoft Graph yanıtı çözümlenemedi.');
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300 || parsed.error) {
+      const message = parsed && (parsed.error && parsed.error.message) ? parsed.error.message : `HTTP ${response.statusCode}`;
+      throw new Error(`Microsoft Graph isteği başarısız: ${message}`);
+    }
+    return parsed;
+  }
+
+  async loginWithMicrosoft(code, options = {}) {
+    if (!this.db) throw new Error('Veritabanı servisi yapılandırılmamış.');
+
+    const tokenSet = await this._exchangeMicrosoftCodeForToken(code, options.codeVerifier);
+    const profile = await this._fetchMicrosoftProfile(tokenSet.access_token);
+    const statePayload = options.state ? this.parseMicrosoftState(options.state) : null;
+
+    const email = profile.mail || profile.userPrincipalName || profile.preferredUsername;
+    if (!email) throw new Error('Microsoft hesabı e-posta bilgisi içermiyor.');
+
+    let user = await this.db.findOne('users', { microsoftId: profile.id });
+    if (!user) user = await this.db.findOne('users', { email });
+
+    const timestamp = new Date().toISOString();
+    const basePatch = {
+      microsoftId: profile.id,
+      microsoftTenantId: this.microsoft.tenantId,
+      lastMicrosoftLogin: timestamp
+    };
+    if (tokenSet.refresh_token) basePatch.microsoftRefreshToken = tokenSet.refresh_token;
+
+    if (!user) {
+      const display = typeof profile.displayName === 'string' ? profile.displayName.trim() : '';
+      const displayParts = display ? display.split(/\s+/) : [];
+      const given = profile.givenName || displayParts[0] || email;
+      const family = profile.surname || (displayParts.length > 1 ? displayParts.slice(1).join(' ') : '');
+      user = await this.db.insert('users', {
+        email,
+        name: given,
+        surname: family,
+        role: 'user',
+        passwordHash: 'microsoft-oauth',
+        verified: true,
+        authProvider: 'microsoft',
+        ...basePatch
+      });
+    } else {
+      const provider = user.authProvider && user.authProvider !== 'local' ? user.authProvider : 'microsoft';
+      const patch = Object.assign({}, basePatch, {
+        verified: true,
+        authProvider: provider
+      });
+      if (!user.name) {
+        const display = typeof profile.displayName === 'string' ? profile.displayName.trim() : '';
+        if (profile.givenName) patch.name = profile.givenName;
+        else if (display) patch.name = display.split(/\s+/)[0];
+      }
+      if (!user.surname) {
+        if (profile.surname) patch.surname = profile.surname;
+        else if (typeof profile.displayName === 'string') {
+          const parts = profile.displayName.trim().split(/\s+/);
+          if (parts.length > 1) patch.surname = parts.slice(1).join(' ');
+        }
+      }
+      if (!user.email && email) patch.email = email;
+      const updated = await this.db.update('users', user.id, patch);
+      if (updated) user = updated;
+    }
+
+    await this.ensureCertificateForUser(user);
+    const token = await this.createJWT(user);
+
+    return {
+      success: true,
+      data: {
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          surname: user.surname,
+          role: user.role
+        },
+        state: statePayload,
+        expiresIn: tokenSet.expires_in || null,
+        scope: tokenSet.scope || null
+      }
+    };
+  }
+
+  async handleMicrosoftCallback(params = {}) {
+    const result = await this.loginWithMicrosoft(params.code, { state: params.state, codeVerifier: params.codeVerifier });
+    return result;
+  }
+
+  // -------------------------
   // Email send rate-limiting
   // -------------------------
   async _shouldSendEmail(userId, type) {
@@ -90,6 +348,7 @@ class AuthService {
   }
 
   async verifyPassword(password, storedHash) {
+    if (!storedHash || typeof storedHash !== 'string') return false;
     const parts = storedHash.split('-');
     if (parts.length < 4 || parts[0] !== 'pbkdf2') throw new Error('Unsupported hash type');
     const iter = parseInt(parts[1], 10);
@@ -137,12 +396,11 @@ class AuthService {
       email, name, surname, schoolNumber,
       role: role || 'user',
       passwordHash,
-      verified: false
+      verified: false,
+      authProvider: 'local'
     });
 
-    if (this.pki && typeof this.pki.createCertForUser === 'function') {
-      await this.pki.createCertForUser(user);
-    }
+    await this.ensureCertificateForUser(user);
 
     const check = await this._shouldSendEmail(user.id, 'emailVerification');
     let token;
@@ -262,39 +520,51 @@ class AuthService {
   // -------------------------
   // PKI JWT
   // -------------------------
+  async ensureCertificateForUser(user) {
+    if (!user || !user.id) return null;
+    if (!this.pki || typeof this.pki.createCertForUser !== 'function') return null;
+    try {
+      await fs.access(this.keyPathFor(user.id));
+      await fs.access(this.certPathFor(user.id));
+      return null;
+    } catch (err) {
+      return this.pki.createCertForUser(user);
+    }
+  }
+
   async createJWT(user, ttlSec = 3600) {
-  const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: 'JWT' })).toString('base64url');
-  const exp = Math.floor(Date.now() / 1000) + ttlSec;
-  const payloadObj = { id: user.id, role: user.role, exp };
-  const payload = Buffer.from(JSON.stringify(payloadObj)).toString('base64url');
+    const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: 'JWT' })).toString('base64url');
+    const exp = Math.floor(Date.now() / 1000) + ttlSec;
+    const payloadObj = { id: user.id, role: user.role, exp };
+    const payload = Buffer.from(JSON.stringify(payloadObj)).toString('base64url');
 
-  const dataToSign = `${header}.${payload}`;
-  const privKey = await fs.readFile(this.keyPathFor(user.id), 'utf8');
+    const dataToSign = `${header}.${payload}`;
+    const privKey = await fs.readFile(this.keyPathFor(user.id), 'utf8');
 
-  // crypto.sign ile ieee-p1363 raw r||s formatı
-  const sigBuf = crypto.sign(null, Buffer.from(dataToSign), { key: privKey, dsaEncoding: 'ieee-p1363' });
-  const sig = sigBuf.toString('base64url');
-  return `${dataToSign}.${sig}`;
-}
+    // crypto.sign ile ieee-p1363 raw r||s formatı
+    const sigBuf = crypto.sign(null, Buffer.from(dataToSign), { key: privKey, dsaEncoding: 'ieee-p1363' });
+    const sig = sigBuf.toString('base64url');
+    return `${dataToSign}.${sig}`;
+  }
 
   async verifyJWT(token) {
-  try {
-    const [headerB64, payloadB64, sigB64] = token.split('.');
-    if (!headerB64 || !payloadB64 || !sigB64) return null;
-    const payloadObj = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
-    const certPem = await fs.readFile(this.certPathFor(payloadObj.id), 'utf8');
+    try {
+      const [headerB64, payloadB64, sigB64] = token.split('.');
+      if (!headerB64 || !payloadB64 || !sigB64) return null;
+      const payloadObj = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+      const certPem = await fs.readFile(this.certPathFor(payloadObj.id), 'utf8');
 
-    const verifierInput = Buffer.from(`${headerB64}.${payloadB64}`);
-    const sigBuf = Buffer.from(sigB64, 'base64url');
+      const verifierInput = Buffer.from(`${headerB64}.${payloadB64}`);
+      const sigBuf = Buffer.from(sigB64, 'base64url');
 
-    const ok = crypto.verify(null, verifierInput, { key: certPem, dsaEncoding: 'ieee-p1363' }, sigBuf);
-    if (!ok) return null;
-    if (payloadObj.exp < Math.floor(Date.now() / 1000)) return null;
-    return payloadObj;
-  } catch (err) {
-    return null;
+      const ok = crypto.verify(null, verifierInput, { key: certPem, dsaEncoding: 'ieee-p1363' }, sigBuf);
+      if (!ok) return null;
+      if (payloadObj.exp < Math.floor(Date.now() / 1000)) return null;
+      return payloadObj;
+    } catch (err) {
+      return null;
+    }
   }
-}
 
   async login(email, password) {
     const emailCheck = this.validateEmail(email);
@@ -304,9 +574,14 @@ class AuthService {
     if (!user) return { success: false, message: 'Email bulunamadı.' };
     if (!user.verified) return { success: false, message: 'Email doğrulanmamış.' };
 
+    if (!user.passwordHash || user.passwordHash === 'microsoft-oauth') {
+      return { success: false, message: 'Bu hesap Microsoft ile oturum açıyor.' };
+    }
+
     const valid = await this.verifyPassword(password, user.passwordHash);
     if (!valid) return { success: false, message: 'Geçersiz şifre.' };
 
+    await this.ensureCertificateForUser(user);
     const token = await this.createJWT(user);
     return { success: true, data: { token } };
   }

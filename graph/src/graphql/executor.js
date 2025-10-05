@@ -54,10 +54,25 @@ function checkPermissions(fieldMeta, args, ctx) {
  *   - a direct resolver function (old style)
  * - contextValue: make sure you set contextValue.user = req.user in your /graphql handler
  */
-async function execute({ schema, document, contextValue = {}, variableValues = {} }) {
-  const op = document.definitions[0];
+async function execute({ schema, document, contextValue = {}, variableValues = {}, operationName = null }) {
+  if (!document || !Array.isArray(document.definitions)) {
+    return { data: null, errors: [{ message: 'GraphQL belgesi geçersiz.' }] };
+  }
+
+  let op = null;
+  for (const def of document.definitions) {
+    if (def.kind !== 'OperationDefinition') continue;
+    if (!operationName) { op = def; break; }
+    if (def.name && def.name.value === operationName) { op = def; break; }
+  }
+
+  if (!op) {
+    const msg = operationName ? `Operation "${operationName}" bulunamadı.` : 'Belgede yürütülebilir bir operasyon yok.';
+    return { data: null, errors: [{ message: msg }] };
+  }
+
   const root = op.operation === 'mutation' ? schema.Mutation : schema.Query;
-  if (!root) return { data: null, errors: [{ message: `Missing root type` }] };
+  if (!root) return { data: null, errors: [{ message: `Missing root type for ${op.operation}` }] };
 
   const coercedVars = { ...(variableValues || {}) };
   if (Array.isArray(op.variableDefinitions)) {

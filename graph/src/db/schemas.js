@@ -38,9 +38,14 @@ const SCHEMAS = {
       name:  { type: 'String', required: true },
       surname: { type: 'String' },
       schoolNumber: { type: 'String' },
-      passwordHash: { type: 'String', required: true },
+      passwordHash: { type: 'String' },
       role: { type: 'String', default: 'user' },
-      verified: { type: 'Boolean', default: false }
+      verified: { type: 'Boolean', default: false },
+      authProvider: { type: 'String' },
+      microsoftId: { type: 'String' },
+      microsoftTenantId: { type: 'String' },
+      microsoftRefreshToken: { type: 'String' },
+      lastMicrosoftLogin: { type: 'Date' }
     }
   }
 };
