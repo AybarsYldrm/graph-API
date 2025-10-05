@@ -1,0 +1,960 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Yönetim Paneli</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: radial-gradient(circle at top, #05070e, #020305 65%);
+      --surface: rgba(12, 16, 28, 0.92);
+      --surface-soft: rgba(16, 20, 32, 0.7);
+      --text: #f5f7fb;
+      --muted: #9aa4b8;
+      --accent: #8ab4f8;
+      --border: rgba(138, 180, 248, 0.18);
+      --danger: #ff6b81;
+      --radius: 16px;
+      font-family: 'Segoe UI', Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    header.dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 26px 28px 18px;
+      max-width: 1240px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-mark {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: linear-gradient(145deg, rgba(138,180,248,0.4), rgba(53,74,182,0.35));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.2rem;
+      box-shadow: 0 16px 36px rgba(8, 12, 30, 0.55);
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 1.6rem;
+    }
+    .brand p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+    .user-info strong { font-size: 1.05rem; }
+    .user-meta { color: var(--muted); font-size: 0.9rem; }
+    button.logout {
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(138, 180, 248, 0.35);
+      background: transparent;
+      color: var(--accent);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    main.content {
+      flex: 1;
+      width: 100%;
+      max-width: 1240px;
+      margin: 0 auto 40px;
+      padding: 0 28px 28px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 50px rgba(4, 6, 14, 0.55);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .card h2 { margin: 0; font-size: 1.3rem; }
+    .details {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 8px 12px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .details span { color: var(--text); }
+    ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    ul#eventList {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    li.event-item {
+      padding: 14px;
+      border-radius: 12px;
+      background: var(--surface-soft);
+      border: 1px solid rgba(138,180,248,0.12);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .event-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+    }
+    .event-meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .event-actions { display: flex; gap: 10px; }
+    .event-actions button {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .event-actions button.delete {
+      border-color: rgba(255,107,129,0.35);
+      color: var(--danger);
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    form label { font-size: 0.9rem; color: var(--muted); }
+    input, textarea, select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(138,180,248,0.22);
+      background: rgba(10, 14, 24, 0.6);
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    button.primary {
+      align-self: flex-start;
+      padding: 10px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(138,180,248,0.35);
+      background: rgba(138,180,248,0.25);
+      color: var(--text);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.secondary {
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(138,180,248,0.2);
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+    }
+    .hidden { display: none; }
+    .status {
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+    .status.success { color: #7dd87d; }
+    .status.error { color: var(--danger); }
+    .permission-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 220px;
+      overflow: auto;
+      padding-right: 6px;
+    }
+    .permission-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.9rem;
+      border-bottom: 1px solid rgba(138,180,248,0.08);
+      padding-bottom: 4px;
+    }
+    footer.footer {
+      text-align: center;
+      padding: 16px 24px 28px;
+      color: rgba(153,164,184,0.78);
+      font-size: 0.85rem;
+    }
+    @media (max-width: 760px) {
+      header.dashboard-header { flex-direction: column; align-items: flex-start; padding: 22px 18px 12px; }
+      main.content { padding: 0 18px 24px; }
+      .user-info { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header class="dashboard-header">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">GA</div>
+      <div>
+        <h1>Yönetim Paneli</h1>
+        <p>Graph API · Microsoft OAuth · PKI</p>
+      </div>
+    </div>
+    <div class="user-info">
+      <strong id="userName">Yükleniyor…</strong>
+      <div class="user-meta"><span id="userRole">—</span> · <span id="userEmail">—</span></div>
+      <button id="btnLogout" class="logout" type="button">Çıkış Yap</button>
+    </div>
+  </header>
+
+  <main class="content">
+    <section class="card" id="sessionCard">
+      <h2>Oturum Özeti</h2>
+      <div class="details">
+        <div>Son Microsoft giriş:</div>
+        <span id="lastLogin">—</span>
+        <div>PKI sertifika durumu:</div>
+        <span id="pkiStatus">—</span>
+        <div>Microsoft kullanıcı adı:</div>
+        <span id="msAlias">—</span>
+        <div>Yetki maskesi (bin/hex):</div>
+        <span><code id="permissionBin">—</code> · <code id="permissionHex">—</code></span>
+        <div>Aktif yetkiler:</div>
+        <span id="permissionNames">—</span>
+      </div>
+      <div id="globalMessage" class="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="card" id="eventsCard">
+      <h2>Etkinlikler</h2>
+      <ul id="eventList"></ul>
+    </section>
+
+    <section class="card hidden" id="adminPanel">
+      <h2>Yeni Etkinlik Oluştur</h2>
+      <form id="eventForm">
+        <div>
+          <label for="evTitle">Başlık</label>
+          <input id="evTitle" name="evTitle" required />
+        </div>
+        <div>
+          <label for="evStart">Başlangıç (ISO)</label>
+          <input id="evStart" name="evStart" placeholder="2024-10-01T09:30" />
+        </div>
+        <div>
+          <label for="evEnd">Bitiş (ISO)</label>
+          <input id="evEnd" name="evEnd" placeholder="2024-10-01T11:00" />
+        </div>
+        <div>
+          <label for="evLocation">Yer</label>
+          <input id="evLocation" name="evLocation" placeholder="Kampüs A Blok" />
+        </div>
+        <div>
+          <label for="evTags">Etiketler (virgülle ayır)</label>
+          <input id="evTags" name="evTags" placeholder="eğitim, workshop" />
+        </div>
+        <button type="submit" class="primary">Etkinliği Kaydet</button>
+      </form>
+      <div id="adminMessage" class="status"></div>
+    </section>
+
+    <section class="card" id="pushCard">
+      <h2>Web Push Bildirimleri</h2>
+      <p class="status" id="pushSupport">Tarayıcı desteği kontrol ediliyor…</p>
+      <div class="actions">
+        <button id="btnEnablePush" class="primary">Bildirimleri Aç</button>
+        <button id="btnDisablePush" class="secondary hidden">Aboneliği Kapat</button>
+      </div>
+      <div class="status" id="pushMessage"></div>
+      <h3>Aktif abonelikler</h3>
+      <ul id="pushSubscriptions"></ul>
+    </section>
+
+    <section class="card hidden" id="pushBroadcastCard">
+      <h2>Push Yayını</h2>
+      <form id="pushSendForm">
+        <div>
+          <label for="pushTitle">Başlık</label>
+          <input id="pushTitle" required placeholder="Sistem duyurusu" />
+        </div>
+        <div>
+          <label for="pushBody">Mesaj</label>
+          <textarea id="pushBody" rows="3" placeholder="İçerik" ></textarea>
+        </div>
+        <div>
+          <label for="pushUrl">Tıklama hedefi (opsiyonel)</label>
+          <input id="pushUrl" placeholder="https://" />
+        </div>
+        <div>
+          <label for="pushUserId">Hedef kullanıcı ID (boş bırak broadcast)</label>
+          <input id="pushUserId" placeholder="Broadcast için boş bırak" />
+        </div>
+        <div>
+          <label for="pushTtl">TTL (saniye, opsiyonel)</label>
+          <input id="pushTtl" type="number" min="60" step="60" placeholder="2419200" />
+        </div>
+        <button type="submit" class="primary">Bildirim gönder</button>
+      </form>
+      <div id="pushSendMessage" class="status"></div>
+    </section>
+
+    <section class="card" id="permissionsCard">
+      <h2>Yetki Ayrıntıları & Snowflake</h2>
+      <div>
+        <h3>Tanımlı yetkiler</h3>
+        <div class="permission-list" id="permissionCatalog"></div>
+      </div>
+      <div>
+        <h3>Snowflake oluştur</h3>
+        <form id="snowflakeGenerateForm">
+          <label>Permission ID (0-16383)
+            <input id="permIdInput" type="number" min="0" max="16383" required />
+          </label>
+          <label>Action ID (0-63)
+            <input id="actionIdInput" type="number" min="0" max="63" required />
+          </label>
+          <label>Tür
+            <select id="snowflakeMode">
+              <option value="secure" selected>Secure (HMAC + TTL)</option>
+              <option value="plain">Plain</option>
+            </select>
+          </label>
+          <label class="ttl-field">TTL (ms - secure için opsiyonel)
+            <input id="snowflakeTtl" type="number" min="1000" step="1000" placeholder="60000" />
+          </label>
+          <button type="submit" class="primary">Token oluştur</button>
+        </form>
+        <pre id="snowflakeResult" class="status" style="white-space:pre-wrap"></pre>
+      </div>
+      <div>
+        <h3>Snowflake doğrula</h3>
+        <form id="snowflakeVerifyForm">
+          <label>Token
+            <input id="verifyToken" required placeholder="Girilen token" />
+          </label>
+          <button type="submit" class="secondary">Doğrula</button>
+        </form>
+        <pre id="snowflakeVerifyResult" class="status" style="white-space:pre-wrap"></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">&copy; <span id="footerYear"></span> FitFak Network · Güvenli iletişim altyapısı</footer>
+
+  <script>
+    (function() {
+      const state = {
+        user: null,
+        events: [],
+        permissions: null,
+        permissionCatalog: [],
+        push: {
+          supported: 'serviceWorker' in navigator && 'PushManager' in window,
+          registration: null,
+          subscriptions: []
+        }
+      };
+
+      const els = {
+        userName: document.getElementById('userName'),
+        userRole: document.getElementById('userRole'),
+        userEmail: document.getElementById('userEmail'),
+        lastLogin: document.getElementById('lastLogin'),
+        pkiStatus: document.getElementById('pkiStatus'),
+        msAlias: document.getElementById('msAlias'),
+        permissionBin: document.getElementById('permissionBin'),
+        permissionHex: document.getElementById('permissionHex'),
+        permissionNames: document.getElementById('permissionNames'),
+        permissionCatalog: document.getElementById('permissionCatalog'),
+        eventList: document.getElementById('eventList'),
+        globalMessage: document.getElementById('globalMessage'),
+        adminMessage: document.getElementById('adminMessage'),
+        pushMessage: document.getElementById('pushMessage'),
+        pushSupport: document.getElementById('pushSupport'),
+        pushSubscriptions: document.getElementById('pushSubscriptions'),
+        pushSendMessage: document.getElementById('pushSendMessage'),
+        adminPanel: document.getElementById('adminPanel'),
+        pushBroadcastCard: document.getElementById('pushBroadcastCard'),
+        eventForm: document.getElementById('eventForm'),
+        logout: document.getElementById('btnLogout'),
+        footerYear: document.getElementById('footerYear'),
+        enablePush: document.getElementById('btnEnablePush'),
+        disablePush: document.getElementById('btnDisablePush'),
+        pushSendForm: document.getElementById('pushSendForm'),
+        snowflakeGenerateForm: document.getElementById('snowflakeGenerateForm'),
+        snowflakeVerifyForm: document.getElementById('snowflakeVerifyForm'),
+        snowflakeResult: document.getElementById('snowflakeResult'),
+        snowflakeVerifyResult: document.getElementById('snowflakeVerifyResult'),
+        permIdInput: document.getElementById('permIdInput'),
+        actionIdInput: document.getElementById('actionIdInput'),
+        snowflakeMode: document.getElementById('snowflakeMode'),
+        snowflakeTtl: document.getElementById('snowflakeTtl'),
+        verifyToken: document.getElementById('verifyToken'),
+        pushTitle: document.getElementById('pushTitle'),
+        pushBody: document.getElementById('pushBody'),
+        pushUrl: document.getElementById('pushUrl'),
+        pushUserId: document.getElementById('pushUserId'),
+        pushTtl: document.getElementById('pushTtl')
+      };
+      els.footerYear.textContent = new Date().getFullYear();
+
+      function setStatus(element, text, type) {
+        element.textContent = text || '';
+        element.classList.remove('success', 'error');
+        if (!text) return;
+        if (type === 'success') element.classList.add('success');
+        if (type === 'error') element.classList.add('error');
+      }
+
+      async function graphFetch(query, variables) {
+        try {
+          const res = await fetch('/graph', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(variables ? { query, variables } : { query })
+          });
+          return await res.json();
+        } catch (err) {
+          return { errors: [{ message: err.message }] };
+        }
+      }
+
+      function hasPermission(name) {
+        if (!state.user) return false;
+        if ((state.user.role || '').toLowerCase() === 'admin') return true;
+        const active = state.permissions?.active || state.user.permissions?.active;
+        if (!Array.isArray(active)) return false;
+        return active.some((entry) => entry.name === name);
+      }
+
+      function formatDate(value) {
+        if (!value) return '—';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleString('tr-TR', { hour12: false });
+      }
+
+      function renderUser() {
+        if (!state.user) return;
+        const displayName = [state.user.name, state.user.surname].filter(Boolean).join(' ').trim() || state.user.email;
+        els.userName.textContent = displayName;
+        els.userRole.textContent = (state.user.role || '').toUpperCase();
+        els.userEmail.textContent = state.user.email || '—';
+        els.lastLogin.textContent = formatDate(state.user.lastMicrosoftLogin);
+        els.pkiStatus.textContent = state.user.pkiIssuedAt
+          ? `Sertifika ${formatDate(state.user.pkiIssuedAt)} tarihinde üretildi.`
+          : 'Sertifika bekleniyor';
+        els.msAlias.textContent = state.user.microsoftUniqueName || '—';
+        els.permissionBin.textContent = state.permissions?.permissionBin || state.user.permissions?.permissionBin || '—';
+        els.permissionHex.textContent = state.permissions?.permissionHex || state.user.permissions?.permissionHex || '—';
+        const active = state.permissions?.active || state.user.permissions?.active || [];
+        els.permissionNames.textContent = active.length ? active.map((p) => p.label_tr || p.name).join(', ') : '—';
+
+        if (hasPermission('MANAGE_SETTINGS')) {
+          els.adminPanel.classList.remove('hidden');
+        } else {
+          els.adminPanel.classList.add('hidden');
+        }
+
+        if (hasPermission('MANAGE_USERS')) {
+          els.pushBroadcastCard.classList.remove('hidden');
+        } else {
+          els.pushBroadcastCard.classList.add('hidden');
+        }
+      }
+
+      function renderEvents() {
+        els.eventList.innerHTML = '';
+        if (!state.events.length) {
+          const empty = document.createElement('li');
+          empty.className = 'event-item';
+          empty.textContent = 'Henüz etkinlik bulunmuyor.';
+          els.eventList.appendChild(empty);
+          return;
+        }
+        state.events.forEach((evt) => {
+          const li = document.createElement('li');
+          li.className = 'event-item';
+
+          const header = document.createElement('div');
+          header.className = 'event-header';
+          header.textContent = evt.title || 'Etkinlik';
+
+          const meta = document.createElement('div');
+          meta.className = 'event-meta';
+          const spanSchedule = document.createElement('span');
+          spanSchedule.textContent = `${formatDate(evt.startsAt)} → ${formatDate(evt.endsAt)}`;
+          const spanLocation = document.createElement('span');
+          spanLocation.textContent = evt.location || 'Yer belirtilmedi';
+          const spanTags = document.createElement('span');
+          const tags = Array.isArray(evt.tags) ? evt.tags.filter(Boolean) : [];
+          spanTags.textContent = tags.length ? `#${tags.join(' #')}` : '#etiket-yok';
+          meta.append(spanSchedule, spanLocation, spanTags);
+
+          li.append(header, meta);
+
+          if (hasPermission('MANAGE_SETTINGS')) {
+            const actions = document.createElement('div');
+            actions.className = 'event-actions';
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'delete';
+            deleteBtn.textContent = 'Sil';
+            deleteBtn.dataset.id = evt.id;
+            actions.appendChild(deleteBtn);
+            li.appendChild(actions);
+          }
+
+          els.eventList.appendChild(li);
+        });
+      }
+
+      function renderPermissionCatalog() {
+        els.permissionCatalog.innerHTML = '';
+        if (!hasPermission('MANAGE_ROLES') && !hasPermission('ADMIN')) {
+          const info = document.createElement('div');
+          info.textContent = 'Yetki kataloğu yalnızca yönetici yetkisiyle görüntülenir.';
+          els.permissionCatalog.appendChild(info);
+          return;
+        }
+        if (!state.permissionCatalog.length) {
+          const fallback = document.createElement('div');
+          fallback.textContent = 'Yetki kataloğu yüklenemedi.';
+          els.permissionCatalog.appendChild(fallback);
+          return;
+        }
+        state.permissionCatalog.forEach((entry) => {
+          const row = document.createElement('div');
+          row.className = 'permission-item';
+          const title = document.createElement('span');
+          title.textContent = `${entry.bit}. ${entry.name}`;
+          const desc = document.createElement('span');
+          desc.textContent = entry.label_tr || entry.desc_tr || '';
+          row.append(title, desc);
+          els.permissionCatalog.appendChild(row);
+        });
+      }
+
+      function renderPush() {
+        const supportedText = state.push.supported
+          ? 'Tarayıcı Web Push desteği algılandı.'
+          : 'Tarayıcınız Web Push desteklemiyor.';
+        setStatus(els.pushSupport, supportedText, state.push.supported ? 'success' : 'error');
+
+        els.pushSubscriptions.innerHTML = '';
+        if (!state.push.subscriptions.length) {
+          const li = document.createElement('li');
+          li.textContent = 'Aktif abonelik bulunmuyor.';
+          els.pushSubscriptions.appendChild(li);
+        } else {
+          state.push.subscriptions.forEach((sub) => {
+            const li = document.createElement('li');
+            li.className = 'event-item';
+            const endpoint = document.createElement('div');
+            endpoint.textContent = sub.endpoint;
+            const meta = document.createElement('div');
+            meta.className = 'event-meta';
+            meta.textContent = `${sub.browser || 'bilinmiyor'} · ${sub.platform || ''}`;
+            li.append(endpoint, meta);
+            els.pushSubscriptions.appendChild(li);
+          });
+        }
+
+        if (state.push.subscriptions.length) {
+          els.enablePush.classList.add('hidden');
+          els.disablePush.classList.remove('hidden');
+        } else {
+          els.enablePush.classList.remove('hidden');
+          els.disablePush.classList.add('hidden');
+        }
+      }
+
+      async function ensureServiceWorker() {
+        if (!state.push.supported) return null;
+        if (state.push.registration) return state.push.registration;
+        state.push.registration = await navigator.serviceWorker.register('/sw.js');
+        return state.push.registration;
+      }
+
+      function urlB64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+          outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+      }
+
+      async function refreshPushSubscriptions() {
+        const query = `query MyPushSubs { myPushSubscriptions { success data { endpoint browser platform createdAt lastResult } } }`;
+        const result = await graphFetch(query);
+        const payload = result?.data?.myPushSubscriptions;
+        if (payload?.success && Array.isArray(payload.data)) {
+          state.push.subscriptions = payload.data;
+        } else {
+          state.push.subscriptions = [];
+        }
+        renderPush();
+      }
+
+      async function enablePush() {
+        if (!state.push.supported) {
+          setStatus(els.pushMessage, 'Tarayıcı Web Push desteklemiyor.', 'error');
+          return;
+        }
+        try {
+          const permission = await Notification.requestPermission();
+          if (permission === 'denied') throw new Error('Bildirim izni reddedildi.');
+
+          const registration = await ensureServiceWorker();
+          const existing = await registration.pushManager.getSubscription();
+          if (existing) {
+            await fetch('/api/push/subscribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ subscription: existing.toJSON(), metadata: { userAgent: navigator.userAgent, platform: navigator.platform } })
+            });
+            await refreshPushSubscriptions();
+            setStatus(els.pushMessage, 'Mevcut abonelik güncellendi.', 'success');
+            return;
+          }
+
+          const vapidResponse = await fetch('/api/push/vapid', { credentials: 'include' });
+          const vapidJson = await vapidResponse.json();
+          const publicKey = vapidJson?.data?.publicKey;
+          if (!publicKey) throw new Error('VAPID anahtarı alınamadı.');
+
+          const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlB64ToUint8Array(publicKey)
+          });
+
+          const response = await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ subscription: subscription.toJSON(), metadata: { userAgent: navigator.userAgent, platform: navigator.platform } })
+          });
+
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || 'Abonelik kaydedilemedi');
+          }
+
+          await refreshPushSubscriptions();
+          setStatus(els.pushMessage, 'Push aboneliği aktifleştirildi.', 'success');
+        } catch (err) {
+          setStatus(els.pushMessage, err.message || 'Push aboneliği başarısız.', 'error');
+        }
+      }
+
+      async function disablePush() {
+        try {
+          const registration = await ensureServiceWorker();
+          const subscription = await registration.pushManager.getSubscription();
+          if (subscription) {
+            await fetch('/api/push/unsubscribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ endpoint: subscription.endpoint })
+            });
+            await subscription.unsubscribe();
+          }
+          state.push.subscriptions = [];
+          renderPush();
+          setStatus(els.pushMessage, 'Abonelik kapatıldı.', 'success');
+        } catch (err) {
+          setStatus(els.pushMessage, err.message || 'Abonelik kapatılamadı.', 'error');
+        }
+      }
+
+      async function loadUser() {
+        const result = await graphFetch(`query DashboardMe {
+          me {
+            success
+            message
+            data {
+              id
+              name
+              surname
+              role
+              email
+              permissionId
+              permissions { permissionId permissionHex permissionBin allowedCount active { bit name label_tr desc_tr } }
+              microsoftUniqueName
+              lastMicrosoftLogin
+              pkiIssuedAt
+            }
+          }
+        }`);
+        const payload = result?.data?.me;
+        if (!payload?.success || !payload.data) {
+          window.location.href = '/pages/login.html';
+          return;
+        }
+        state.user = payload.data;
+        state.permissions = payload.data.permissions || null;
+        renderUser();
+      }
+
+      async function loadPermissionCatalog() {
+        if (!hasPermission('MANAGE_ROLES') && !hasPermission('ADMIN')) {
+          renderPermissionCatalog();
+          return;
+        }
+        const result = await graphFetch('query PermissionCatalog { permissionsCatalog { success data { bit name label_tr desc_tr } } }');
+        const payload = result?.data?.permissionsCatalog;
+        if (payload?.success && Array.isArray(payload.data)) {
+          state.permissionCatalog = payload.data;
+        }
+        renderPermissionCatalog();
+      }
+
+      async function loadEvents() {
+        const result = await graphFetch('query DashboardEvents { events { id title startsAt endsAt location tags ownerId } }');
+        if (Array.isArray(result?.data?.events)) {
+          state.events = result.data.events;
+        } else {
+          state.events = [];
+          setStatus(els.globalMessage, 'Etkinlik listesi alınamadı.', 'error');
+        }
+        renderEvents();
+      }
+
+      async function createEvent(payload) {
+        const mutation = `mutation CreateEvent($title: String!, $startsAt: String, $endsAt: String, $location: String, $tags: [String!]) {
+          createEvent(title: $title, startsAt: $startsAt, endsAt: $endsAt, location: $location, tags: $tags) {
+            id title startsAt endsAt location tags
+          }
+        }`;
+        const result = await graphFetch(mutation, payload);
+        if (result.errors?.length) throw new Error(result.errors[0].message);
+        if (!result.data?.createEvent) throw new Error('Beklenmeyen yanıt');
+        return result.data.createEvent;
+      }
+
+      async function deleteEvent(eventId) {
+        const mutation = `mutation DeleteEvent($id: ID!) { deleteEvent(id: $id) }`;
+        const result = await graphFetch(mutation, { id: eventId });
+        if (result.errors?.length) throw new Error(result.errors[0].message);
+        if (result.data?.deleteEvent !== true) throw new Error('Etkinlik silinemedi');
+      }
+
+      async function generateSnowflake(formData) {
+        const mutation = `mutation GenerateSnowflake($permissionId: Int!, $actionId: Int!, $mode: String!, $ttlMs: Int) {
+          generateSnowflakeToken(permissionId: $permissionId, actionId: $actionId, mode: $mode, ttlMs: $ttlMs) {
+            success
+            mode
+            token
+            ttlMs
+            expiresAt
+            permission { permissionHex permissionBin active { name } }
+          }
+        }`;
+        const result = await graphFetch(mutation, formData);
+        if (result.errors?.length) throw new Error(result.errors[0].message);
+        return result.data?.generateSnowflakeToken;
+      }
+
+      async function verifySnowflake(token) {
+        const mutation = `mutation VerifySnowflake($token: String!) {
+          verifySnowflakeToken(token: $token) {
+            success
+            decode { ok type expiresAt permissionId actionId note }
+            permission { permissionHex permissionBin active { name } }
+          }
+        }`;
+        const result = await graphFetch(mutation, { token });
+        if (result.errors?.length) throw new Error(result.errors[0].message);
+        return result.data?.verifySnowflakeToken;
+      }
+
+      els.eventForm.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        setStatus(els.adminMessage, 'Etkinlik kaydediliyor…');
+        const form = ev.target;
+        const title = form.evTitle.value.trim();
+        if (!title) {
+          setStatus(els.adminMessage, 'Başlık zorunludur.', 'error');
+          return;
+        }
+        const payload = {
+          title,
+          startsAt: form.evStart.value.trim() || null,
+          endsAt: form.evEnd.value.trim() || null,
+          location: form.evLocation.value.trim() || null,
+          tags: form.evTags.value.split(',').map((t) => t.trim()).filter(Boolean)
+        };
+        try {
+          await createEvent(payload);
+          setStatus(els.adminMessage, 'Etkinlik oluşturuldu.', 'success');
+          form.reset();
+          await loadEvents();
+        } catch (err) {
+          setStatus(els.adminMessage, err.message || 'Etkinlik oluşturulamadı.', 'error');
+        }
+      });
+
+      els.eventList.addEventListener('click', async (ev) => {
+        const target = ev.target;
+        if (!(target instanceof HTMLElement)) return;
+        if (!target.classList.contains('delete')) return;
+        const eventId = target.dataset.id;
+        if (!eventId) return;
+        if (!window.confirm('Etkinliği silmek istediğinize emin misiniz?')) return;
+        setStatus(els.adminMessage, 'Etkinlik siliniyor…');
+        try {
+          await deleteEvent(eventId);
+          setStatus(els.adminMessage, 'Etkinlik silindi.', 'success');
+          await loadEvents();
+        } catch (err) {
+          setStatus(els.adminMessage, err.message || 'Etkinlik silinemedi.', 'error');
+        }
+      });
+
+      els.logout.addEventListener('click', async () => {
+        try {
+          await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+        } catch (_) {}
+        window.location.href = '/pages/login.html';
+      });
+
+      els.enablePush.addEventListener('click', enablePush);
+      els.disablePush.addEventListener('click', disablePush);
+
+      els.pushSendForm.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        setStatus(els.pushSendMessage, 'Bildirim gönderiliyor…');
+        const payload = {
+          title: els.pushTitle.value.trim(),
+          body: els.pushBody.value.trim(),
+          url: els.pushUrl.value.trim(),
+          userId: els.pushUserId.value.trim() || null,
+          ttl: parseInt(els.pushTtl.value, 10)
+        };
+        if (!payload.title) {
+          setStatus(els.pushSendMessage, 'Başlık zorunlu.', 'error');
+          return;
+        }
+        if (!Number.isFinite(payload.ttl)) delete payload.ttl;
+        try {
+          const response = await fetch('/api/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+          });
+          const json = await response.json();
+          if (!response.ok || !json.success) throw new Error(json.message || 'Bildirim gönderilemedi');
+          setStatus(els.pushSendMessage, 'Bildirim gönderildi.', 'success');
+        } catch (err) {
+          setStatus(els.pushSendMessage, err.message || 'Bildirim gönderilemedi.', 'error');
+        }
+      });
+
+      els.snowflakeGenerateForm.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        setStatus(els.snowflakeResult, 'Token oluşturuluyor…');
+        const permissionId = Number(els.permIdInput.value);
+        const actionId = Number(els.actionIdInput.value);
+        const mode = els.snowflakeMode.value;
+        const ttlMsRaw = els.snowflakeTtl.value.trim();
+        const ttlMs = ttlMsRaw ? Number(ttlMsRaw) : undefined;
+        try {
+          const result = await generateSnowflake({ permissionId, actionId, mode, ttlMs });
+          if (!result?.success) throw new Error('Token oluşturulamadı');
+          const lines = [
+            `Token: ${result.token}`,
+            result.expiresAt ? `Süre: ${result.expiresAt}` : '',
+            `Yetki: ${result.permission?.permissionHex || ''}`
+          ].filter(Boolean).join('\n');
+          setStatus(els.snowflakeResult, lines, 'success');
+        } catch (err) {
+          setStatus(els.snowflakeResult, err.message || 'Token oluşturulamadı.', 'error');
+        }
+      });
+
+      els.snowflakeVerifyForm.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        setStatus(els.snowflakeVerifyResult, 'Doğrulanıyor…');
+        const token = els.verifyToken.value.trim();
+        try {
+          const result = await verifySnowflake(token);
+          if (!result?.success) throw new Error('Token doğrulanamadı');
+          const lines = [
+            `Tip: ${result.decode?.type}`,
+            result.decode?.expiresAt ? `Geçerlilik: ${formatDate(result.decode.expiresAt)}` : '',
+            `Yetki: ${result.permission?.permissionHex || ''}`
+          ].filter(Boolean).join('\n');
+          setStatus(els.snowflakeVerifyResult, lines, 'success');
+        } catch (err) {
+          setStatus(els.snowflakeVerifyResult, err.message || 'Doğrulama başarısız.', 'error');
+        }
+      });
+
+      async function init() {
+        setStatus(els.globalMessage, 'Veriler yükleniyor…');
+        if (state.push.supported) {
+          try {
+            await ensureServiceWorker();
+          } catch (err) {
+            state.push.supported = false;
+            setStatus(els.pushSupport, err.message || 'Service worker kaydedilemedi.', 'error');
+          }
+        }
+        await loadUser();
+        await Promise.all([
+          loadEvents(),
+          loadPermissionCatalog(),
+          refreshPushSubscriptions()
+        ]);
+        setStatus(els.globalMessage, 'Hazır.', 'success');
+      }
+
+      init().catch((err) => {
+        setStatus(els.globalMessage, err.message || 'Gösterge paneli yüklenirken hata oluştu.', 'error');
+      });
+    })();
+  </script>
+</body>
+</html>

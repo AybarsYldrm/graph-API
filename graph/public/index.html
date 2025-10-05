@@ -3,618 +3,228 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Etkinlik Yönetim SPA</title>
+  <title>Graph API Portalı</title>
   <style>
-    /* Stil (orijinalin büyük kısmını korudum) */
-    *,*::before,*::after{box-sizing:border-box}
-    html { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; font-size:13px; }
-    :root{ --bg:#07080a; --surface:#0c0d0e; --text:#e6e9eb; --muted:#9aa3a7; --accent:#98a4ab; --danger:#d9534f; --radius:8px; --shadow:0 6px 20px rgba(0,0,0,0.6); --max-width:1200px; }
-    body { margin:0; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:16px 10px; background:linear-gradient(180deg,#030304 0%, #071011 100%); color:var(--text); }
-    .app { width:100%; max-width: var(--max-width); }
-    header.app-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border-radius:10px; background:linear-gradient(90deg,#0b0c0d,#090909); box-shadow:var(--shadow); margin-bottom:12px; }
-    .brand { display:flex; gap:10px; align-items:center; }
-    .logo { width:38px; height:38px; border-radius:8px; background:#0b0b0b; display:flex; align-items:center; justify-content:center; color:var(--accent); font-weight:700; }
-    header h1 { margin:0; font-size:0.98rem; }
-    header .small { font-size:0.78rem; color:var(--muted); margin-top:2px; }
-    .user-area { font-size:0.92rem; color:var(--muted); display:flex; align-items:center; gap:8px; }
-    main.app-main { display:flex; gap:14px; width:100%; align-items:flex-start; }
-    .panel { flex:1 1 520px; min-width:260px; }
-    .side { width:340px; min-width:240px; }
-    .card { background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00)); border-radius: var(--radius); padding: 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.02); margin-bottom:10px; }
-    form.app-form { display:flex; flex-direction:column; gap:8px; width:100%; }
-    label { font-size:0.82rem; color:var(--muted); display:block; margin-bottom:6px; }
-    input[type="text"], input[type="email"], input[type="password"], input[type="datetime-local"], textarea { width:100%; padding:8px 10px; background:transparent; border:1px solid rgba(255,255,255,0.04); color:var(--text); border-radius:6px; outline:none; font-size:0.92rem; transition: border-color .12s, box-shadow .12s, transform .08s; }
-    input:focus, textarea:focus { border-color:var(--accent); box-shadow:0 6px 18px rgba(150,160,170,0.05); transform: translateY(-1px); }
-    button.btn { background: linear-gradient(180deg,#0d0d0d,#0b0b0b); color:var(--text); border:none; padding:8px 10px; border-radius:8px; cursor:pointer; font-weight:600; font-size:0.92rem; }
-    button.btn.ghost { background:transparent; border:1px solid rgba(255,255,255,0.03); color:var(--muted); }
-    .links { display:flex; gap:10px; justify-content:center; color:var(--muted); font-size:0.9rem; margin-top:6px; }
-    .event-item { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.02); margin-bottom:8px; }
-    .event-meta { font-size:0.86rem; color:var(--muted); }
-    .event-actions { display:flex; gap:8px; }
-    .small { font-size:0.78rem; color:var(--muted); }
-    #message-inline { text-align:center; margin-bottom:8px; font-weight:600; min-height:20px; font-size:0.95rem; }
-    .msg-error { color:var(--danger); }
-    .msg-ok { color:var(--accent); }
-    .view { display:none; }
-    .view.active { display:block; }
-    #snackbar { position:fixed; left:50%; transform:translateX(-50%); bottom:20px; min-width:220px; max-width:92%; padding:10px 14px; border-radius:8px; background:rgba(10,10,10,0.96); color:var(--text); box-shadow:0 8px 30px rgba(0,0,0,0.6); opacity:0; pointer-events:none; transition: opacity .22s, transform .22s; z-index:9999; display:flex; gap:10px; align-items:center; }
-    #snackbar.show { opacity:1; pointer-events:auto; transform:translateX(-50%) translateY(-6px); }
-    #snackbar.ok { border:1px solid rgba(158,170,176,0.12); }
-    #snackbar.error { border:1px solid rgba(217,83,79,0.14); background:linear-gradient(180deg,#2b0b0b,#1a0b0b); }
-    @media (max-width: 899px) { main.app-main { flex-direction:column; gap:12px; } .side { width:100%; } header { flex-direction:column; align-items:flex-start; gap:8px; } }
+    :root {
+      color-scheme: dark;
+      --bg: radial-gradient(circle at top, #0b0d15, #040506 55%);
+      --card: rgba(14, 16, 24, 0.82);
+      --text: #eef2f5;
+      --muted: #99a4b5;
+      --accent: #8ab4f8;
+      --border: rgba(138, 180, 248, 0.16);
+      --radius: 14px;
+      font-family: 'Segoe UI', Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    header.hero {
+      padding: 32px 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      max-width: 1080px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .brand-mark {
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      background: linear-gradient(145deg, rgba(138,180,248,0.35), rgba(55,73,187,0.35));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.4rem;
+      box-shadow: 0 12px 40px rgba(8, 12, 32, 0.45);
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 1.8rem;
+    }
+    .brand p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    nav.actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    button.cta, a.button-link {
+      background: linear-gradient(135deg, rgba(138,180,248,0.45), rgba(138,180,248,0.2));
+      color: var(--text);
+      border: 1px solid rgba(138,180,248,0.35);
+      border-radius: 999px;
+      padding: 12px 22px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform .15s ease, box-shadow .15s ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    button.cta:hover, a.button-link:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 32px rgba(138,180,248,0.25);
+    }
+    main.grid {
+      flex: 1;
+      width: 100%;
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 24px 48px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: 0 18px 48px rgba(5,8,16,0.35);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .card h2 {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+    ul.features {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 0.98rem;
+    }
+    .status {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      color: var(--muted);
+    }
+    .status strong { color: var(--text); }
+    footer.site-footer {
+      margin-top: auto;
+      padding: 20px 24px 30px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: rgba(153,164,181,0.8);
+    }
+    @media (max-width: 720px) {
+      header.hero { padding: 24px 18px 12px; }
+      main.grid { padding: 0 18px 36px; }
+    }
   </style>
 </head>
 <body>
-  <div class="app" id="appRoot">
-    <header class="app-header" role="banner">
-      <div class="brand">
-        <div class="logo" aria-hidden="true">ET</div>
-        <div>
-          <h1>Etkinlik Yönetim Sistemi</h1>
-          <div class="small">GraphQL tabanlı — Türkçe</div>
-        </div>
+  <header class="hero">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">GA</div>
+      <div>
+        <h1>Graph API Yönetim Portalı</h1>
+        <p>Microsoft kimlik doğrulaması ve kurum içi PKI ile entegre, çok kanallı yönetim arayüzü.</p>
       </div>
-      <div class="user-area" id="headerUserArea">
-        <span id="userName">Ziyaretçi</span>
-        <button class="btn ghost" id="btnLogout" style="margin-left:6px; display:none;">Çıkış</button>
+    </div>
+    <nav class="actions" aria-label="Ana eylemler">
+      <button id="btnMicrosoftLogin" class="cta" type="button">Microsoft ile Giriş Yap</button>
+      <a class="button-link" id="dashboardLink" href="/pages/dashboard.html">Kontrol Paneline Git</a>
+    </nav>
+  </header>
+
+  <main class="grid">
+    <section class="card">
+      <h2>Bağlantı Katmanları</h2>
+      <ul class="features">
+        <li>Microsoft OAuth 2.0 ile tek oturum açma ve otomatik PKI sertifika üretimi.</li>
+        <li>GraphQL ve REST uç noktaları için birleşik, RFC uyumlu HTTP servis katmanı.</li>
+        <li>Gelişmiş içerik güvenliği: nonce ve SHA-256 karmaları ile CSP, sıkı CORS ve hız limitleri.</li>
+      </ul>
+    </section>
+
+    <section class="card" id="statusCard">
+      <h2>Oturum Durumu</h2>
+      <div class="status">
+        <div><strong>Kullanıcı:</strong> <span id="statusUser">Misafir</span></div>
+        <div><strong>Rol:</strong> <span id="statusRole">—</span></div>
+        <div id="statusMessage">Microsoft ile oturum açarak yönetim araçlarına erişebilirsiniz.</div>
       </div>
-    </header>
+    </section>
+  </main>
 
-    <main class="app-main" role="main">
-      <section class="panel" id="panelLeft">
-        <div id="message-inline" aria-live="polite"></div>
-
-        <!-- Giriş -->
-        <article id="login-view" class="view card active" aria-labelledby="loginTitle">
-          <h2 id="loginTitle">Giriş Yap</h2>
-          <form id="login-form" class="app-form" autocomplete="on" novalidate>
-            <div><label for="login-email">E-posta</label><input id="login-email" type="email" required /></div>
-            <div><label for="login-password">Şifre</label><input id="login-password" type="password" required /></div>
-            <div><button type="submit" class="btn">Giriş Yap</button></div>
-            <div class="links" role="navigation" aria-label="Giriş linkleri">
-              <a href="#" data-action="to-register">Kayıt Ol</a>
-              <a href="#" data-action="to-reset">Şifre Sıfırlama</a>
-            </div>
-          </form>
-        </article>
-
-        <!-- Kayıt -->
-        <article id="register-view" class="view card" aria-labelledby="registerTitle">
-          <h2 id="registerTitle">Kayıt Ol</h2>
-          <form id="register-form" class="app-form" autocomplete="on" novalidate>
-            <div><label for="reg-name">İsim</label><input id="reg-name" type="text" required /></div>
-            <div><label for="reg-surname">Soyisim</label><input id="reg-surname" type="text" required /></div>
-            <div><label for="reg-school">Okul Numarası</label><input id="reg-school" type="text" required /></div>
-            <div><label for="reg-email">E-posta</label><input id="reg-email" type="email" required /></div>
-            <div><label for="reg-password">Şifre</label><input id="reg-password" type="password" required /></div>
-            <div><button class="btn" type="submit">Kayıt Ol</button></div>
-            <div class="links"><a href="#" data-action="to-login">Girişe Dön</a></div>
-          </form>
-        </article>
-
-        <!-- E-posta Doğrulama (kod ile) -->
-        <article id="verify-view" class="view card" aria-labelledby="verifyTitle">
-          <h2 id="verifyTitle">E-posta Doğrulama</h2>
-          <form id="verify-form" class="app-form" novalidate>
-            <div><label for="verify-token">Doğrulama Kodu (ya da linkten gelen token otomatik işlenir)</label><input id="verify-token" type="text" required /></div>
-            <div><button class="btn" type="submit">Doğrula</button></div>
-          </form>
-          <div id="verify-path-result" class="small" style="margin-top:8px;"></div>
-        </article>
-
-        <!-- Token ile gelen reset path'ini SPA içinde göstermek için -->
-        <article id="reset-token-view" class="view card" aria-labelledby="resetTokenTitle">
-          <h2 id="resetTokenTitle">Yeni Şifre Belirle (Link ile)</h2>
-          <form id="reset-token-form" class="app-form" novalidate>
-            <div><label for="reset-token-newpass">Yeni Şifre</label><input id="reset-token-newpass" type="password" required /></div>
-            <div><button class="btn" type="submit">Gönder</button></div>
-          </form>
-          <div id="reset-token-result" class="small" style="margin-top:8px;"></div>
-        </article>
-
-      </section>
-
-      <aside class="side">
-        <div id="events-view" class="card view" aria-labelledby="eventsTitle">
-          <h2 id="eventsTitle">Etkinlikler</h2>
-          <div id="event-list" class="small" role="list" aria-live="polite"></div>
-
-          <div id="admin-panel" style="margin-top:12px; display:none;">
-            <h3>Yeni Etkinlik Oluştur</h3>
-            <form id="event-form" class="app-form" novalidate>
-              <div><label for="ev-title">Başlık</label><input id="ev-title" type="text" required /></div>
-              <div><label for="ev-start">Başlangıç</label><input id="ev-start" type="datetime-local" /></div>
-              <div><label for="ev-end">Bitiş</label><input id="ev-end" type="datetime-local" /></div>
-              <div><label for="ev-location">Yer</label><input id="ev-location" type="text" /></div>
-              <div><label for="ev-tags">Etiketler (virgülle ayır)</label><input id="ev-tags" type="text" /></div>
-              <div><button class="btn" type="submit">Oluştur</button></div>
-            </form>
-          </div>
-
-        </div>
-      </aside>
-    </main>
-  </div>
-
-  <!-- Snackbar -->
-  <div id="snackbar" role="status" aria-live="polite" aria-atomic="true"><div id="sn-text"></div></div>
+  <footer class="site-footer">
+    &copy; <span id="footerYear"></span> FitFak Network · Güvenli iletişim ve etkinlik yönetimi altyapısı
+  </footer>
 
   <script>
-    (function () {
-      const API_AUTH = "/graph/auth";
-      const API_GRAPH = "/graph";
+    (function() {
+      const loginButton = document.getElementById('btnMicrosoftLogin');
+      const dashboardLink = document.getElementById('dashboardLink');
+      const statusUser = document.getElementById('statusUser');
+      const statusRole = document.getElementById('statusRole');
+      const statusMessage = document.getElementById('statusMessage');
+      const footerYear = document.getElementById('footerYear');
+      footerYear.textContent = new Date().getFullYear();
 
-      // in-memory only
-      let token = null;
-      let userInfo = null;
+      const dashboardOrigin = encodeURIComponent('/pages/dashboard.html');
+      loginButton.addEventListener('click', () => {
+        window.location.href = `/auth/microsoft?origin=${dashboardOrigin}`;
+      });
 
-      // UI helpers
-      const snEl = document.getElementById('snackbar');
-      const snText = document.getElementById('sn-text');
-      let snTimer = null;
-      function showSnackbar(text, type='ok', duration=3500) {
-        snText.textContent = text || '';
-        snEl.className = '';
-        snEl.classList.add(type === 'error' ? 'error' : 'ok');
-        snEl.classList.add('show');
-        if (snTimer) clearTimeout(snTimer);
-        snTimer = setTimeout(()=> { snEl.classList.remove('show'); }, duration);
-      }
-      function setInlineMessage(text, type) {
-        const el = document.getElementById('message-inline');
-        el.textContent = text || '';
-        el.className = type === 'error' ? 'msg-error' : (type === 'ok' ? 'msg-ok' : '');
-      }
-      function showMsg(text, type) { setInlineMessage(text, type); showSnackbar(text, type === 'error' ? 'error' : 'ok'); }
-
-      // Basic escaping for GraphQL string interpolation
-      function escapeForGraphQL(str) {
-        if (str === null || str === undefined) return '';
-        return String(str).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
-      }
-
-      // Generic GraphQL fetch helper: supports variables and always uses credentials include
-      async function gqlFetch(url, query, variables = null, useAuthHeaderIfNeeded = true) {
-        const headers = { 'Content-Type': 'application/json' };
-        if (useAuthHeaderIfNeeded && token) headers['Authorization'] = 'Bearer ' + token;
-        const body = variables ? JSON.stringify({ query, variables }) : JSON.stringify({ query });
-        const res = await fetch(url, { method: 'POST', headers, body, credentials: 'include' });
-        // network-level errors will throw
-        const json = await res.json().catch(()=>({ errors:[{message:'Invalid JSON response'}] }));
-        return json;
-      }
-
-      function isAdmin(info) {
-        if (!info) return false;
-        if (Array.isArray(info.roles)) return info.roles.includes('admin') || info.roles.includes('ADMIN');
-        if (typeof info.role === 'string') return info.role.toLowerCase() === 'admin';
-        return false;
-      }
-
-      // --- AUTH FLOW helpers ---
-
-      // 1) Try to get user via cookie only (no Authorization header)
-      async function initAuthFromCookieOnly() {
+      async function graphFetch(query) {
         try {
-          const meQ = `query { me { success data { id role name surname schoolNumber } } }`;
-          // call session endpoint (server expects cookie-based auth here)
-          const res = await gqlFetch("/graph/auth/session", meQ, null, false);
-          if (res && res.data && res.data.me && res.data.me.success) {
-            userInfo = res.data.me.data;
-            token = null;
-            updateUiForUser();
-            return true;
-          }
-        } catch (e) {
-          // ignore network errors
-        }
-        userInfo = null;
-        token = null;
-        updateUiForUser();
-        return false;
-      }
-
-      // 2) Ask server to set HttpOnly cookie from returned token (calls session mutation on /graph/auth)
-      async function tryServerSetCookie(tokenToSet) {
-        try {
-          const q = `mutation { session(token: "${escapeForGraphQL(tokenToSet)}") { success message } }`;
-          const res = await fetch(API_AUTH, {
+          const res = await fetch('/graph', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ query: q })
+            body: JSON.stringify({ query })
           });
-          if (!res.ok) return false;
-          const json = await res.json().catch(()=>null);
-          // server returns data.session.success
-          return !!(json && json.data && json.data.session && json.data.session.success);
-        } catch (e) {
-          console.error('tryServerSetCookie error', e);
-          return false;
-        }
-      }
-
-      // Login handler
-      async function onLogin(e) {
-        e.preventDefault();
-        showMsg('Giriş yapılıyor...');
-        const email = document.getElementById('login-email').value.trim();
-        const password = document.getElementById('login-password').value;
-        if (!email || !password) return showMsg('Email ve şifre gerekli.', 'error');
-
-        const q = `mutation { login(email: "${escapeForGraphQL(email)}", password: "${escapeForGraphQL(password)}") { success message data { token } } }`;
-        try {
-          const r = await gqlFetch(API_AUTH, q, null, false); // allow cookie setting by server
-          if (r.errors && r.errors.length) return showMsg(r.errors[0].message, 'error');
-          if (!r.data || !r.data.login) return showMsg('Beklenmeyen cevap.', 'error');
-          if (!r.data.login.success) return showMsg(r.data.login.message || 'Giriş başarısız', 'error');
-
-          const returnedToken = r.data.login.data && r.data.login.data.token;
-
-          // If server already set cookie, re-check me
-          if (!returnedToken) {
-            await initAuthFromCookieOnly();
-            showMsg('Giriş başarılı (cookie ile).', 'ok');
-            showView('events-view');
-            return;
-          }
-
-          // Ask server to set cookie using session mutation
-          const cookieSet = await tryServerSetCookie(returnedToken).catch(()=>false);
-          if (cookieSet) {
-            token = null;
-            await initAuthFromCookieOnly();
-            showMsg('Giriş başarılı (cookie ile).', 'ok');
-            showView('events-view');
-            return;
-          }
-
-          // Fallback: keep token only in memory
-          token = returnedToken;
-          try {
-            const meQ = `query { me { success data { id role name surname schoolNumber } } }`;
-            const meR = await gqlFetch("/graph/auth/session", meQ, null, true);
-            if (meR && meR.data && meR.data.me && meR.data.me.success) userInfo = meR.data.me.data;
-          } catch (_) { userInfo = null; }
-          updateUiForUser();
-          showMsg('Giriş başarılı (geçici oturum).', 'ok');
-          showView('events-view');
+          return await res.json();
         } catch (err) {
-          console.error(err);
-          showMsg('Giriş hatası: ' + (err.message || ''), 'error');
+          return { errors: [{ message: err.message }] };
         }
       }
 
-      // Register
-      async function onRegister(e) {
-        e.preventDefault();
-        showMsg('Kaydolunuyor...');
-        const name = document.getElementById('reg-name').value.trim();
-        const surname = document.getElementById('reg-surname').value.trim();
-        const school = document.getElementById('reg-school').value.trim();
-        const email = document.getElementById('reg-email').value.trim();
-        const pass = document.getElementById('reg-password').value;
-        if (!name || !email || !pass) return showMsg('Gerekli alanları doldurun.', 'error');
+      function updateForGuest() {
+        statusUser.textContent = 'Misafir';
+        statusRole.textContent = '—';
+        statusMessage.textContent = 'Microsoft hesabınız ile giriş yaparak etkinlik yönetimi ve PKI araçlarını kullanabilirsiniz.';
+      }
 
-        const q = `mutation { register(name: "${escapeForGraphQL(name)}", surname: "${escapeForGraphQL(surname)}", schoolNumber: "${escapeForGraphQL(school)}", email: "${escapeForGraphQL(email)}", password: "${escapeForGraphQL(pass)}") { success message } }`;
-        try {
-          const r = await gqlFetch(API_AUTH, q, null, false);
-          if (r.errors && r.errors.length) return showMsg(r.errors[0].message, 'error');
-          if (r.data && r.data.register && r.data.register.success) {
-            showMsg('Kayıt başarılı. E-posta doğrulama gönderildi.', 'ok');
-            showView('verify-view');
-          } else {
-            showMsg((r.data && r.data.register && r.data.register.message) || 'Kayıt başarısız', 'error');
-          }
-        } catch (err) {
-          showMsg('Kayıt hatası', 'error');
+      async function refreshSession() {
+        const result = await graphFetch('query IndexMe { me { success message data { name surname role email } } }');
+        const payload = result && result.data && result.data.me ? result.data.me : null;
+        if (!payload || !payload.success || !payload.data) {
+          updateForGuest();
+          return;
         }
+        const user = payload.data;
+        const displayName = [user.name, user.surname].filter(Boolean).join(' ').trim() || user.email;
+        statusUser.textContent = displayName;
+        statusRole.textContent = user.role || 'kullanıcı';
+        statusMessage.textContent = 'Hoş geldiniz! Kontrol paneline ilerleyerek etkinlik ve sertifika işlemlerini yönetebilirsiniz.';
       }
 
-      // Request password reset: server sends token to e-posta
-      async function onRequestReset(e) {
-        e.preventDefault();
-        showMsg('Sıfırlama kodu isteniyor...');
-        const email = document.getElementById('reset-email') ? document.getElementById('reset-email').value.trim() : '';
-        if (!email) return showMsg('E-posta girin.', 'error');
-
-        const q = `mutation { requestPasswordReset(email: "${escapeForGraphQL(email)}") { success message } }`;
-        try {
-          const r = await gqlFetch(API_AUTH, q, null, false);
-          if (r.errors && r.errors.length) return showMsg(r.errors[0].message, 'error');
-          const msg = r.data && r.data.requestPasswordReset && r.data.requestPasswordReset.message;
-          showMsg(msg || 'Kodu e-posta ile gönderildi.', 'ok');
-          // If backend uses code-entry flow, you can show verify view
-          // We'll route user to "verify" to allow them to paste token if they received a code
-          document.getElementById('verify-token').value = '';
-          showView('verify-view');
-        } catch (err) {
-          showMsg('İstek hatası', 'error');
-        }
-      }
-
-      // Confirm reset (used when user pastes code into verify view)
-      async function onConfirmReset(e) {
-        e.preventDefault();
-        showMsg('Kod doğrulanıyor...');
-        const code = document.getElementById('reset-code') ? document.getElementById('reset-code').value.trim() : '';
-        const email = document.getElementById('reset-confirm-email') ? document.getElementById('reset-confirm-email').value.trim() : '';
-        const newPass = document.getElementById('reset-new-password') ? document.getElementById('reset-new-password').value : '';
-        if (!code || !newPass) return showMsg('Kod ve yeni şifre gerekli.', 'error');
-
-        const q = `mutation { resetPassword(token: "${escapeForGraphQL(code)}", newPassword: "${escapeForGraphQL(newPass)}") { success message } }`;
-        try {
-          const r = await gqlFetch(API_AUTH, q, null, false);
-          if (r.errors && r.errors.length) return showMsg(r.errors[0].message, 'error');
-          const ok = r.data && r.data.resetPassword && r.data.resetPassword.success;
-          showMsg((r.data && r.data.resetPassword && r.data.resetPassword.message) || (ok ? 'Şifre sıfırlandı' : 'Başarısız'), ok ? 'ok' : 'error');
-          if (ok) showView('login-view');
-        } catch (err) {
-          showMsg('Doğrulama hatası', 'error');
-        }
-      }
-
-      // Verify email (manual code input)
-      async function onVerifyEmail(e) {
-        e.preventDefault();
-        showMsg('Doğrulama kontrol ediliyor...');
-        const tokenInput = document.getElementById('verify-token').value.trim();
-        if (!tokenInput) return showMsg('Kod gerekli.', 'error');
-
-        const q = `mutation { verifyEmail(token: "${escapeForGraphQL(tokenInput)}") { success message } }`;
-        try {
-          const r = await gqlFetch(API_AUTH, q, null, false);
-          if (r.errors && r.errors.length) return showMsg(r.errors[0].message, 'error');
-          const ok = r.data && r.data.verifyEmail && r.data.verifyEmail.success;
-          showMsg((r.data && r.data.verifyEmail && r.data.verifyEmail.message) || (ok ? 'Doğrulandı' : 'Doğrulama başarısız'), ok ? 'ok' : 'error');
-          if (ok) showView('login-view');
-        } catch (err) {
-          showMsg('Doğrulama hatası', 'error');
-        }
-      }
-
-      // handle path-based verify/reset tokens (if user clicked link)
-      async function handleVerifyPath(token) {
-        showView('verify-view');
-        const resultEl = document.getElementById('verify-path-result');
-        resultEl.textContent = 'Doğrulanıyor...';
-        try {
-          const q = `mutation { verifyEmail(token: "${escapeForGraphQL(token)}") { success message } }`;
-          const res = await gqlFetch(API_AUTH, q, null, false);
-          if (res?.data?.verifyEmail?.success) {
-            resultEl.textContent = 'Email başarıyla doğrulandı ✅';
-            showMsg('Email doğrulandı.', 'ok');
-            history.replaceState(null, "", "/");
-            showView('login-view');
-          } else {
-            const msg = res?.data?.verifyEmail?.message || 'Doğrulama başarısız';
-            resultEl.textContent = 'Hata: ' + msg;
-            showMsg(msg, 'error');
-          }
-        } catch (err) {
-          resultEl.textContent = 'Sunucuya ulaşılamadı ❌';
-          showMsg('Sunucuya ulaşılamadı', 'error');
-        }
-      }
-
-      async function handleResetPath(token) {
-        showView('reset-token-view');
-        const form = document.getElementById('reset-token-form');
-        const resultEl = document.getElementById('reset-token-result');
-        // reset handler
-        const onSubmit = async (e) => {
-          e.preventDefault();
-          const newPass = document.getElementById('reset-token-newpass').value;
-          if (!newPass) { resultEl.textContent = 'Lütfen yeni şifre girin.'; return; }
-          resultEl.textContent = 'İşleniyor...';
-          try {
-            const q = `mutation { resetPassword(token: "${escapeForGraphQL(token)}", newPassword: "${escapeForGraphQL(newPass)}") { success message } }`;
-            const res = await gqlFetch(API_AUTH, q, null, false);
-            if (res?.data?.resetPassword?.success) {
-              resultEl.textContent = 'Şifre başarıyla değiştirildi ✅';
-              showMsg('Şifre değişti.', 'ok');
-              history.replaceState(null, "", "/");
-              showView('login-view');
-            } else {
-              const msg = res?.data?.resetPassword?.message || 'İşlem başarısız';
-              resultEl.textContent = 'Hata: ' + msg;
-              showMsg(msg, 'error');
-            }
-          } catch (err) {
-            resultEl.textContent = 'Sunucuya ulaşılamadı ❌';
-            showMsg('Sunucuya ulaşılamadı', 'error');
-          }
-        };
-
-        // ensure single listener
-        form.removeEventListener('submit', form._resetListener);
-        form._resetListener = onSubmit;
-        form.addEventListener('submit', onSubmit);
-      }
-
-      function parsePathForTokenActions() {
-        const path = (window.location.pathname || '').split('/').filter(Boolean);
-        if (path.length >= 3 && path[0] === 'graph' && path[1] === 'auth') {
-          const token = path[2];
-          const action = path[3] || '';
-          if (action === 'verify') {
-            handleVerifyPath(token);
-            return true;
-          } else if (action === 'reset') {
-            handleResetPath(token);
-            return true;
-          }
-        }
-        return false;
-      }
-
-      // Events and admin features (unchanged logic, with credentials include in gqlFetch)
-      async function loadEvents() {
-        const q = `query { events { id title startsAt endsAt location tags } }`;
-        try {
-          const r = await gqlFetch(API_GRAPH, q, null, true);
-          if (r.errors && r.errors.length) return showMsg(r.errors[0].message, 'error');
-          const list = (r.data && r.data.events) ? r.data.events : [];
-          renderEvents(list);
-        } catch (err) {
-          showMsg('Etkinlikler yüklenemedi', 'error');
-        }
-      }
-      function renderEvents(list) {
-        const container = document.getElementById('event-list'); container.innerHTML = '';
-        if (!list || list.length === 0) { container.innerHTML = '<div class="small">Henüz etkinlik yok.</div>'; return; }
-        list.forEach(ev => {
-          const item = document.createElement('div'); item.className = 'event-item';
-          const left = document.createElement('div'); left.style.flex = '1';
-          left.innerHTML = `<div style="font-weight:700">${escapeHtml(ev.title||'—')}</div>
-            <div class="event-meta">${escapeHtml(ev.startsAt||'')} → ${escapeHtml(ev.endsAt||'')}</div>
-            <div class="small">${escapeHtml(ev.location||'')}</div>
-            <div class="small">${(ev.tags&&ev.tags.length)?escapeHtml(ev.tags.join(', ')):''}</div>`;
-          const right = document.createElement('div'); right.className = 'event-actions';
-          if (isAdmin(userInfo)) {
-            const del = document.createElement('button'); del.className='btn ghost'; del.textContent='Sil'; del.addEventListener('click', ()=>onDeleteEvent(ev.id));
-            const edit = document.createElement('button'); edit.className='btn ghost'; edit.textContent='Düzenle'; edit.addEventListener('click', ()=>onPrefillEdit(ev));
-            right.appendChild(edit); right.appendChild(del);
-          }
-          item.appendChild(left); item.appendChild(right); container.appendChild(item);
-        });
-      }
-
-      async function onCreateEvent(e) {
-        e.preventDefault();
-        if (!isAdmin(userInfo)) return showMsg('Yetkiniz yok.', 'error');
-        const t = document.getElementById('ev-title').value.trim();
-        const s = document.getElementById('ev-start').value;
-        const en = document.getElementById('ev-end').value;
-        const l = document.getElementById('ev-location').value.trim();
-        const tags = document.getElementById('ev-tags').value.split(',').map(x=>x.trim()).filter(Boolean);
-        const tagsStr = tags.map(x => `"${escapeForGraphQL(x)}"`).join(',');
-        const q = `mutation { createEvent(title: "${escapeForGraphQL(t)}", startsAt: "${escapeForGraphQL(s)}", endsAt: "${escapeForGraphQL(en)}", location: "${escapeForGraphQL(l)}", tags: [${tagsStr}]) { id title } }`;
-        try {
-          const r = await gqlFetch(API_GRAPH, q, null, true);
-          if (r.errors && r.errors.length) return showMsg(r.errors[0].message, 'error');
-          showMsg('Etkinlik oluşturuldu.', 'ok'); document.getElementById('event-form').reset(); loadEvents();
-        } catch (err) { showMsg('Oluşturma hatası', 'error'); }
-      }
-
-      async function onDeleteEvent(id) {
-        if (!confirm('Bu etkinliği silmek istediğinizden emin misiniz?')) return;
-        const q = `mutation { deleteEvent(id: "${escapeForGraphQL(id)}") }`;
-        try {
-          const r = await gqlFetch(API_GRAPH, q, null, true);
-          if (r.errors && r.errors.length) return showMsg(r.errors[0].message, 'error');
-          showMsg('Etkinlik silindi.', 'ok'); loadEvents();
-        } catch (err) { showMsg('Silme hatası', 'error'); }
-      }
-
-      function onPrefillEdit(ev) {
-        document.getElementById('ev-title').value = ev.title || '';
-        document.getElementById('ev-start').value = ev.startsAt || '';
-        document.getElementById('ev-end').value = ev.endsAt || '';
-        document.getElementById('ev-location').value = ev.location || '';
-        document.getElementById('ev-tags').value = (ev.tags && ev.tags.join(',')) || '';
-        showMsg('Alanlar düzenleme için dolduruldu.', 'ok');
-      }
-
-      function updateUiForUser() {
-        const nameEl = document.getElementById('userName'); const logoutBtn = document.getElementById('btnLogout');
-        if (userInfo && (userInfo.email || userInfo.name)) {
-          nameEl.textContent = userInfo.name ? `${userInfo.name} ${userInfo.surname || ''}` : (userInfo.email || 'Kullanıcı');
-          logoutBtn.style.display = 'inline-block';
-        } else { nameEl.textContent = 'Ziyaretçi'; logoutBtn.style.display = 'none'; }
-        document.getElementById('admin-panel').style.display = isAdmin(userInfo) ? 'block' : 'none';
-        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-        // show current main view:
-        const active = userInfo ? 'events-view' : 'login-view';
-        const target = document.getElementById(active);
-        if (target) target.classList.add('active');
-      }
-
-      // logout: ask server to clear cookie (session route or logout mutation), clear memory
-      async function logout() {
-        token = null; userInfo = null;
-        try {
-          // Try logout mutation at session endpoint (if implemented)
-          await gqlFetch("/graph/auth/session", `mutation { logout { success message } }`, null, false).catch(()=>{});
-          // Fallback: try logout via /graph with credentials
-          await gqlFetch(API_AUTH, `mutation { logout { success message } }`, null, false).catch(()=>{});
-        } catch (e) {}
-        updateUiForUser();
-        showMsg('Çıkış yapıldı.', 'ok');
-        showView('login-view');
-      }
-
-      function showView(id) {
-        document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-        const t = document.getElementById(id); if (t) t.classList.add('active');
-        if (id === 'events-view') loadEvents().catch(()=>{});
-        setTimeout(()=> setInlineMessage('', ''), 80);
-      }
-
-      function escapeHtml(s) {
-        if (!s && s !== 0) return '';
-        return String(s).replace(/[&<>"']/g, function (m) {
-          return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]);
-        });
-      }
-
-      // Init bindings and startup
-      document.addEventListener('DOMContentLoaded', () => {
-        // navigation links
-        document.querySelectorAll('[data-action]').forEach(a => {
-          a.addEventListener('click', ev => {
-            ev.preventDefault();
-            const act = a.getAttribute('data-action');
-            if (act==='to-register') showView('register-view');
-            if (act==='to-login') showView('login-view');
-            if (act==='to-reset') {
-              // show a tiny prompt to request email for reset (simple UX)
-              const email = prompt('Şifre sıfırlama için kayıtlı e-postanızı girin:');
-              if (email) {
-                // Use mutation to request reset link
-                (async ()=> {
-                  setInlineMessage('Kod/bağlantı isteniyor...', 'ok');
-                  try {
-                    const q = `mutation { requestPasswordReset(email: "${escapeForGraphQL(email)}") { success message } }`;
-                    const r = await gqlFetch(API_AUTH, q, null, false);
-                    if (r?.data?.requestPasswordReset?.success) {
-                      showMsg('Sıfırlama e-postası gönderildi. Gelen linkle devam edin.', 'ok');
-                    } else {
-                      showMsg((r?.data?.requestPasswordReset?.message) || 'İstek başarısız', 'error');
-                    }
-                  } catch (e) { showMsg('İstek hatası', 'error'); }
-                })();
-              }
-            }
-          });
-        });
-
-        document.getElementById('btnLogout').addEventListener('click', logout);
-        document.getElementById('login-form').addEventListener('submit', onLogin);
-        document.getElementById('register-form').addEventListener('submit', onRegister);
-        const verifyForm = document.getElementById('verify-form');
-        if (verifyForm) verifyForm.addEventListener('submit', onVerifyEmail);
-        const resetConfirmForm = document.getElementById('reset-token-form');
-        if (resetConfirmForm) resetConfirmForm.addEventListener('submit', (e)=>{ e.preventDefault(); /* handled in handleResetPath when token in path */ });
-
-        // parse path for token-based actions
-        const handled = parsePathForTokenActions();
-        if (!handled) {
-          // normal init
-          (async () => {
-            await initAuthFromCookieOnly();
-            if (userInfo) showView('events-view');
-            else showView('login-view');
-          })();
-        }
-      });
-
-      window.__ETKINLIK_SPA = {
-        getToken: ()=> token,
-        getUser: ()=> userInfo,
-        showSnackbar
-      };
-
+      refreshSession();
     })();
   </script>
 </body>
